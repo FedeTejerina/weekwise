@@ -8,19 +8,36 @@ design. Decisions about the product live in `PLAN.md` once it exists.
 We work in English in this repo — my prompts, your responses, and every artifact. This
 overrides anything in my global config about conversational language.
 
-## Three hard rules
+## Hard rules
 
-### 1. Don't jump to a solution
+### 1. ~~Don't jump to a solution~~ — retired 2026-09-17 (planning log E6)
 
-Do not propose a stack, an architecture, a schema or a feature until I ask for one. If you
-notice yourself drafting an implementation, stop and ask me a question instead.
+The original rule: don't propose a stack, an architecture, a schema or a feature until I ask
+for one.
 
-The problem is deliberately underspecified. Deciding what it means is the work, and a
-confident early answer forecloses it.
+**Why it existed:** the problem was deliberately underspecified, and a confident early answer
+would have closed off how we read it.
+
+**Why it's retired:** we're past discovery. The reading of the problem, what the data allows,
+and the product decisions are recorded in `PLAN.md`, backed by log entries E1–E6. What's needed
+now is convergence.
+
+**What replaces it:** propose concrete options, recommend one, and drive open decisions to a
+close. Anything that contradicts a decision in `PLAN.md` still needs my call first; say so
+rather than working around it.
 
 ### 2. Log every exchange that changes something
 
-Append an entry to `ai-log/planning.md` using the format at the top of that file.
+Append an entry to the log file for the **current phase**, using the entry format the existing
+entries follow. See [`ai-log/README.md`](ai-log/README.md) for how the log is organised.
+
+| Phase | File |
+|---|---|
+| Reading the problem, building `PLAN.md` | `ai-log/planning.md` — **closed 2026-09-17, do not append** |
+| Implementation | `ai-log/implementation.md` |
+
+Create the phase's file if it doesn't exist yet, with the same header fields (`Started`,
+`Models`, `Language`), and add a row to the table in `ai-log/README.md`.
 
 - **Same turn, immediately.** Never batched at the end, never reconstructed from memory.
 - **Append only.** Never rewrite, merge or tidy an earlier entry, including your own.
