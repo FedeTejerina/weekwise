@@ -1,0 +1,30 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Claude Code local overrides (machine-specific; the committed settings.json is the shared one)
+.claude/settings.local.json

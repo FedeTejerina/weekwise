@@ -1,0 +1,7 @@
+# Normalize line endings: LF in the repository, on every platform.
+# This repo is authored on Windows and will be cloned and run on macOS/Linux,
+# so the committed bytes must not depend on the machine that wrote them.
+* text=auto eol=lf
+
+# The seed dataset is committed verbatim and must stay byte-identical to what was provided.
+*.sql text eol=lf
