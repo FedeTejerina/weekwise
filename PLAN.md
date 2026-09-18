@@ -39,9 +39,17 @@ These facts constrain every decision below. Evidence is in log entries E1–E4.
   - **One location, 4 weeks:** only drops of about 40–70% are detectable.
   - **Weekly account total:** changes of about ±25–30% are detectable for the largest
     accounts, but only about −75% to −86% for the smallest single-site accounts.
-- **Account 6, 2026-06-03:** 805 events in one day against about 15 on a normal day, across
-  all 15 locations. The mix of event types and outcomes is normal, but the burst starts and
-  ends exactly on UTC calendar-day boundaries. The cause is unverified.
+- **Account 6, 2026-06-03:** 805 raw events in one day — **804 after deduplication**, since one
+  of the 12 duplicate groups falls on this day — against a median of about 10 on a normal day,
+  across all 15 locations. The mix of event types and outcomes is normal, but the burst starts
+  and ends exactly on UTC calendar-day boundaries. The cause is unverified.
+
+  > **Erratum — 2026-09-17 (log I7).** Read "805 events in one day against about 15 on a normal
+  > day". Both numbers were loose. Re-measured from `seed/seed.sql`: the day holds **805 raw
+  > rows but 804 distinct events**, and every gate result in §4 and §12 — including "15/15
+  > locations flagged" — is computed on the deduplicated 804. Account 6's other days run to a
+  > **median of 10** events, not about 15. Neither correction moves a verdict; the spike is
+  > ~80× a normal day either way.
 - **Data-quality facts to handle in code, never in `seed/`:**
   - 12 groups of exact duplicates (24 rows);
   - 398 events with a null outcome;
@@ -108,14 +116,39 @@ preceding weeks, highest and lowest dropped, so 10 weeks contribute (D8):
   and 0.1 (appointments) per location, and 3.4 / 1.4 / 0.6 per account (E9).
 
 **The usual range** shown with a verdict (D16) is the gate's quiet interval: the counts that
-would *not* be flagged, `[lo, hi]` where `lo` is the smallest count with `CDF ≥ α` and `hi` the
-largest with `1 − CDF(hi) ≥ α`. It needs no separate definition and no separate test, and it is
-also how a small account sees its own detection limit: account 16's usual week is 1–10 calls.
+would *not* be flagged, `[lo, hi]` where `lo` is the smallest count with `CDF(lo) ≥ α` and `hi`
+is the largest count with `1 − CDF(hi − 1) ≥ α` — that is, the largest count the gate above
+leaves quiet. It needs no separate definition and no separate test, and it is also how a small
+account sees its own detection limit: account 16's usual week is 1–10 calls.
+
+> **Erratum — 2026-09-17 (log I7).** `hi` was defined as "the largest with `1 − CDF(hi) ≥ α`",
+> which is off by one against the gate immediately above it: the gate flags `UP` when
+> `1 − CDF(x − 1) < α`, so the largest count it leaves quiet is one higher than that sentence
+> gives. Coded literally, the original produced **[31, 57]** for account 6 / 2026-06-01 where
+> §7 and §12 publish **[31, 58]**, and one-too-low upper bounds everywhere else. The published
+> ranges were always the gate's; only the sentence was wrong.
 
 **The gate as specified, measured per event type** (`scratchpad/estimators2.py` and
-`per_type.py`, logged in E8 and E9). Account 6 is excluded from the "location flags" and
-"verdict flags" columns. "Noise" is the share of Mondays that are not quiet under simulated
-Poisson data at each location's own rate, against a 5% budget.
+`per_type.py`, logged in E8 and E9). The two flag columns exclude account 6 differently, and
+neither exclusion is "all of account 6":
+
+- **"location flags"** excludes every account-6 location, and counts **all other locations,
+  including those in single-site accounts** — whose location-level flags D16 never renders.
+- **"verdict flags"** excludes only account 6's **2026-06-01 cell**; account 6's other weeks are
+  counted, and the denominator 246 is 19 accounts × 13 weeks − that one cell.
+
+"Noise" is the share of Mondays that are not quiet under simulated Poisson data at each
+location's own rate, against a 5% budget.
+
+> **Erratum — 2026-09-17 (log I7).** This paragraph read "Account 6 is excluded from the
+> 'location flags' and 'verdict flags' columns", which is false for both columns and made the
+> anchor unreproducible. Re-measured independently from `seed/seed.sql`: excluding *all* of
+> account 6 gives verdict flags of **7 / 4 / 3**, not the published 10 / 5 / 3, which appears
+> only when just the 2026-06-01 cell is masked — as `estimators2.py` does. And the published
+> location flags **4 / 4 / 9** include one flag in a single-site account (**account 19, Site A,
+> week of 2026-05-18: 13 leads against a typical 1.4, k = 1**); counting only the locations the
+> page can render gives **4 / 3 / 9**. The numbers in the table are correct as measured; the
+> description of what they counted was not.
 
 | event type | typical location week | location flags | acct 6 locations flagged on 06-01 | verdict flags | noise: Mondays not quiet (location / verdict) | evaluations hitting the 0.1 floor |
 |---|---|---|---|---|---|---|
@@ -292,17 +325,33 @@ bucketing, zero-filled weeks, the 4-week rolling sums, and the gate. Response:
   "account": { "id": 6, "name": "Metro Collision Centers", "locationCount": 15 },
   "verdict": {
     "state": "flagged_up",           // quiet | flagged_up | flagged_down | not_enough_history
-    "count": 528, "typical": 45.5, "usualRange": [32, 60],
-    "changePct": 1060                // present only when flagged (D11)
+    "count": 528, "typical": 43.9, "usualRange": [31, 58],
+    "changePct": 1103                // present only when flagged (D11)
   },
   "locations": {                     // omitted entirely for single-site accounts (D16)
     "window": { "start": "2026-05-11", "end": "2026-06-07" },
-    "flagged": [{ "location": "Site N", "state": "flagged_up", "count": 72, "usualRange": [8, 31] }],
-    "notEnoughHistory": ["Site P"],
+    "flagged": [{ "location": "Site N", "state": "flagged_up", "count": 40, "usualRange": [2, 24] }],
+                                       // abbreviated: on this week all 15 are flagged up (§12)
+    "notEnoughHistory": [],            // names; empty for every week the gate can evaluate here
     "quietCount": 0
   }
 }
 ```
+
+> **Erratum — 2026-09-17 (log I2).** The numbers in this block were stale: they predated D8's
+> move to the trimmed mean in E9, while §7 and §12 were re-measured at the time. The block now
+> carries the §7/§12 values, each re-derived from the seed under the D8 baseline in I2:
+> `typical` 45.5 → **43.9**, verdict `usualRange` [32, 60] → **[31, 58]**, `changePct` 1060 →
+> **1103** (12.03×), and Site N `count` 72 → **40** with `usualRange` [8, 31] → **[2, 24]**.
+> No decision changed; §7 and §12 are the anchor wherever an example disagrees with them.
+>
+> **Erratum — 2026-09-17 (log I3).** `notEnoughHistory: ["Site P"]` was invented: the seed has
+> only Site A–O, account 6 holds all 15, and no location in the seed has fewer than 16 full
+> weeks of history at this week, so the field is **empty for every week the gate can evaluate
+> here**. The state stays in the response and in §7 — it is reachable before 2026-05-18, where
+> it applies to a whole account at once — but no seed week shows it next to a flag. The
+> `flagged` array is also abbreviated: on this week all 15 locations are flagged up, which is
+> what `quietCount: 0` was already saying.
 
 **Controls (D15).** URL: `/?account=6&type=call_received&week=2026-06-01`. All three survive a
 reload and work with the browser's back button. Defaults: first account, `call_received`,
@@ -338,8 +387,33 @@ specified in §4, verified in E9.
 > **3 calls** in the week of 13–19 July, against a usual **5 to 18**. That's about **73%** below
 > your typical week.
 
+**Account verdict — flagged up, but less than double.** Account 12, calls, week of 29 June:
+> **45 calls** in the week of 29 June – 5 July, against a usual **20 to 43**. That's about
+> **45%** above your typical week.
+
+**Account verdict — flagged down to nothing.** Account 15, leads, week of 25 May:
+> **No leads at all** in the week of 25–31 May, against a usual **1 to 9**.
+
 **Account verdict — not enough history:**
 > Not enough history yet. Judging a normal week takes 13 weeks of data; you have 9.
+
+> **Addition — 2026-09-17 (log I7).** §7 claimed to cover the whole output but had no sentence
+> for two states the seed actually produces, so the size rule was undefined between them:
+>
+> - **A flagged rise of less than 2×.** Five weeks in the seed land here (account 12 calls
+>   06-29 at 45 vs 31.0; account 6 calls 06-08 at 66 vs 44.5; account 5 calls 05-11 at 33 vs
+>   21.8; account 6 leads 04-27 at 27 vs 16.1; account 5 calls 07-06 at 36 vs 20.6). "About
+>   1.5× your typical week" reads badly, so these take a percentage.
+> - **A flagged drop to zero.** One week in the seed: account 15, leads, 25–31 May, 0 against a
+>   typical 4.4. "About 100% below" is the only sentence the old rules could build, so zero
+>   gets its own line with no percentage at all — consistent with the "no calls yet" wording
+>   already used for the in-progress line (D18).
+>
+> **The size rule, which was previously implicit in two examples:** a ratio of **2× or more**
+> reads as a multiple ("about 12×"); anything below that reads as a percentage above or below
+> ("about 45% above", "about 73% below"); and a count of **zero** reads as "no X at all", with
+> the usual range but no percentage. The four sentences above this note are unchanged, and both
+> new examples are measured gate output: account 12 → usual [20, 43], account 15 → usual [1, 9].
 
 **The in-progress week (D18).** One line, above or beside the verdict, never inside it.
 Account 6, calls, as-of Monday 27 July:
@@ -363,6 +437,8 @@ and no verdict on this line, because 3 days of a week cannot be compared with wh
 - The usual range is always shown, quiet or not. It is what tells a small account that its
   normal week is 1 to 10 calls, so a quiet result never reads as "checked and fine" (§4).
 - A percentage appears only when the gate has fired (D11).
+- **Size reads as a multiple at 2× or more, and as a percentage below that; zero reads as
+  "no X at all", with no percentage** (see the addition note above).
 - The words are the same every Monday. Same numbers in, same sentence out.
 - Zero is written as "no calls yet", not "0", so a quiet start to the week doesn't read as a
   broken page.
