@@ -581,3 +581,77 @@ dispatched the witness cold to rerun them, and stated plainly what it could not 
 this machine rather than implying full coverage.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I12 — README: `npm install` → `npm ci`
+
+**Me:**
+> One thing on the README setup block: change npm install to npm ci. It installs exactly what
+> the lockfile says and fails loudly if package.json and the lockfile disagree, instead of
+> quietly resolving different versions than I tested against — which matters with TypeScript
+> 7 and jsdom's engine constraints. Keep package-lock.json committed for the same reason;
+> npm ci requires it.
+>
+> Then continue with T3.
+
+**Agent:** Changed the one line in `README.md`'s setup block. `package-lock.json` was already
+tracked — I8's log entry (I8) had wrongly called it gitignored; only `node_modules` is, and the
+correction to that record is already in I8's "My call" above, not repeated here.
+
+Ran `npm ci` myself before calling this done, rather than assuming the swap was safe: it
+installed cleanly from the current lockfile, confirming `package.json` and `package-lock.json`
+agree right now. (This only checks today's lockfile is internally consistent — it doesn't, and
+can't, prove `npm ci` will keep behaving this way as dependencies change later; that's the whole
+point of using it instead of `npm install` going forward.)
+
+Repo changes: `README.md` (one line); this log entry.
+
+**My call:** accepted — it ran npm ci before calling the swap done instead of assuming it was
+safe, and then scoped its own check honestly: confirming today's lockfile is internally
+consistent isn't proof that npm ci will keep behaving as dependencies change, which is the
+reason for using it in the first place. It also pointed at I8's correction rather than
+repeating it.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I13 — T3: seed loader, `db:seed` and `db:setup`
+
+**Me:**
+> Then continue with T3.
+
+**Agent:** Wrote `scripts/seed.ts`: reads `seed/seed.sql` once (never written to), runs it inside
+a single `BEGIN`/`COMMIT` transaction over a `pg` `Client`, `ROLLBACK`s on any error. It imports
+its connection config directly from `migrate-config.js` rather than duplicating the
+host/port/user/password/database logic (including the `DB_PORT` override from I11), so the two
+scripts can't drift apart on connection details. Added `tsx` to run it, and two root scripts:
+`db:seed` and `db:setup` (`db:migrate up && db:seed`).
+
+**Verified from a genuinely empty database, not the already-migrated one sitting around from
+T2.** Ran `docker compose down -v` to remove the named volume entirely before testing — the
+Done-when clause specifically says "from an empty database," and reusing the already-seeded
+volume wouldn't have exercised that. `npm run db:setup` exited 0, and
+`select (select count(*) from accounts), (select count(*) from activity_events)` returned
+exactly **20** and **12626** — the exact numbers T3 pins. `git status --porcelain seed/` printed
+nothing.
+
+**Verified independently, not self-reported.** Dispatched the `witness` subagent cold, telling it
+about the port override and how to get to a genuinely empty database (same `docker compose down
+-v` step), but not sharing my own output. It reran both clauses from its own freshly wiped
+container and got the same two numbers and the same empty `git status`. Its one noted gap: it
+didn't read `scripts/seed.ts` or `seed/seed.sql` itself, since the Done-when clauses ask about
+behavior (counts, no writes to `seed/`), not source review.
+
+Repo changes: `scripts/seed.ts` (new); `package.json` and `package-lock.json` (root: `tsx`,
+`db:seed`, `db:setup` scripts); this log entry. No `seed/` writes.
+
+**My call:** accepted. Two decisions here mattered more than the code. It ran docker compose
+down -v to wipe the volume before testing, because T3's clause says "from an empty
+database" and reusing the already-seeded volume from T2 would have passed without
+exercising it — reading the clause literally instead of conveniently. And it told the
+witness how to reach an empty database but withheld its own output, which is the only way
+the witness's matching numbers mean anything.
+
+**Who was right:** (no disagreement)

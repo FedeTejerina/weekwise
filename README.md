@@ -43,7 +43,7 @@ Prerequisites: **Node 22** and **Docker**, both expected to already be present.
 
 ```
 docker compose up -d      # starts Postgres 16
-npm install
+npm ci                    # installs exactly what package-lock.json pins
 npm run db:setup          # runs migrations, then loads seed/seed.sql
 npm run dev                # starts the API and the web UI
 ```
