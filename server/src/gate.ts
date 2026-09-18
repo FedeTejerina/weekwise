@@ -58,14 +58,27 @@ export function classify(x: number, m: number, w: number, k: number): 'flagged_u
 
 /**
  * Evaluates a `w`-week window ending at (and including) `evalIndex` in `series` — a
- * chronologically-ordered array of weekly counts. Returns `not_enough_history` when the 12
- * baseline weeks immediately before the window don't exist yet: minimum history is `12 + w`
- * full weeks (16 for a location, 13 for the account verdict, D8).
+ * chronologically-ordered array of weekly counts. Returns `not_enough_history` when either:
+ * the 12 baseline weeks immediately before the window don't exist yet (minimum history is
+ * `12 + w` full weeks — 16 for a location, 13 for the account verdict, D8); or `hasAnyEvent` is
+ * false. That second case is for an account or location with zero events in its entire
+ * history (account 20 in the seed): an all-zero series has plenty of *calendar* weeks, so the
+ * calendar check alone would call it "quiet" forever — a near-zero floored baseline against a
+ * zero observed count never crosses either threshold. `hasAnyEvent` defaults to `true` because
+ * every location this gate is ever called for already has at least one event, by construction
+ * (T5b's harness needed the same guard, for the same reason — log I19/T5b's verdict-flags
+ * anchor excludes account 20 explicitly rather than trusting the raw formula to exclude it).
  */
-export function evaluateWindow(series: readonly number[], evalIndex: number, w: number, k: number): GateResult {
+export function evaluateWindow(
+  series: readonly number[],
+  evalIndex: number,
+  w: number,
+  k: number,
+  hasAnyEvent = true,
+): GateResult {
   const windowStart = evalIndex - w + 1;
   const baselineStart = windowStart - BASELINE_WEEKS;
-  if (baselineStart < 0) {
+  if (!hasAnyEvent || baselineStart < 0) {
     return { state: 'not_enough_history', typical: null, count: null };
   }
   const baseline = series.slice(baselineStart, windowStart);

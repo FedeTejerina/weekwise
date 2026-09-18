@@ -39,6 +39,20 @@ describe('minimum history (D8): 16 full weeks for a location, 13 for the account
     expect(result.state).not.toBe('not_enough_history');
   });
 
+  it('hasAnyEvent=false is not_enough_history even with a full calendar history of zeros (account 20)', () => {
+    // Plenty of calendar weeks, but every one of them is zero: the raw formula floors m at
+    // 0.1 and calls x=0 against it "quiet" forever, which is wrong for an account that has
+    // never recorded a single event. Caught against the real seed while building T7 (log I20).
+    const allZero = Array(20).fill(0);
+    const withoutFlag = evaluateWindow(allZero, allZero.length - 1, 1, 1);
+    expect(withoutFlag.state).toBe('quiet');
+
+    const withFlag = evaluateWindow(allZero, allZero.length - 1, 1, 1, false);
+    expect(withFlag.state).toBe('not_enough_history');
+    expect(withFlag.typical).toBeNull();
+    expect(withFlag.count).toBeNull();
+  });
+
   it('an account with 12 weeks of history is not_enough_history; 13 is evaluated', () => {
     const twelveWeeks = Array(12).fill(10);
     expect(evaluateWindow(twelveWeeks, twelveWeeks.length - 1, 1, 1).state).toBe('not_enough_history');

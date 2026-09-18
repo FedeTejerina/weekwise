@@ -1,5 +1,11 @@
 import type { Pool } from 'pg';
 
+export interface AccountSummary {
+  id: number;
+  name: string;
+  timezone: string;
+}
+
 export interface AccountWeekRange {
   accountId: number;
   /** First local Monday for which the whole week is inside the data window. */
@@ -15,6 +21,14 @@ export interface WeeklyLocationCounts {
   calls: number;
   leads: number;
   appointments: number;
+}
+
+/** Every account, id order — the accounts table itself, nothing derived. */
+export async function getAccounts(pool: Pool): Promise<AccountSummary[]> {
+  const { rows } = await pool.query<AccountSummary>(
+    `SELECT id, name, timezone FROM accounts ORDER BY id`,
+  );
+  return rows;
 }
 
 /** The dataset's own "now" (D7): the latest `occurred_at` across every event, as UTC text. */
