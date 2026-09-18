@@ -1,12 +1,14 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
-    "outDir": "dist",
     "jsx": "react-jsx",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["vite/client", "node"],
     "noEmit": true
   },
+  // No `rootDir`: web/src imports server/src/wording.ts directly (T10 -> T12's own interface —
+  // it's pure, isomorphic TS, so the browser bundle is exactly the same code T10's tests run
+  // against, not a reimplementation). TS pulls that file (and its own imports) into this
+  // program automatically once something under `src` imports it.
   "include": ["src", "test", "vite.config.ts"]
 }

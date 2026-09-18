@@ -110,6 +110,17 @@ describe('verdictSentence — the six account states (§7), verbatim', () => {
     expect(parts.text).toBe('Not enough history yet. Judging a normal week takes 13 weeks of data; you have 9.');
     expect(parts.emphasis).toEqual([]);
   });
+
+  it('not enough history — the short form, when weeksHave/weeksNeeded are absent (account 20\'s real case)', () => {
+    const parts = verdictSentence({
+      state: 'not_enough_history',
+      weekStart: '2026-07-20',
+      weekEnd: '2026-07-26',
+      eventType: 'call_received',
+    });
+    expect(parts.text).toBe('Not enough history yet.');
+    expect(parts.emphasis).toEqual([]);
+  });
 });
 
 describe('locationFlaggedSentence — account 6, Site N, calls, 4 weeks to 2026-06-07', () => {

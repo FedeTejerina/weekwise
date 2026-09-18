@@ -145,6 +145,14 @@ export function verdictSentence(facts: VerdictFacts): Parts {
   const et = facts.eventType;
 
   if (facts.state === 'not_enough_history') {
+    // The real weeklyCheck() response carries no weeksHave/weeksNeeded at all for this state —
+    // T7 never computes them (they're only ever supplied by T10's own constructed fixture,
+    // log I3: the seed can't produce this state for anything the app actually queries). Rather
+    // than fabricate a wrong-but-specific number, the detail clause is only added when the
+    // caller actually has it.
+    if (facts.weeksHave === undefined && facts.weeksNeeded === undefined) {
+      return new PartsBuilder().plain('Not enough history yet.').build();
+    }
     return new PartsBuilder()
       .plain(
         `Not enough history yet. Judging a normal week takes ${facts.weeksNeeded ?? 13} weeks ` +

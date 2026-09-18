@@ -1,0 +1,77 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f7f7f8;
+  color: #1a1a1a;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+h1 {
+  font-size: 1.25rem;
+  margin-bottom: 16px;
+}
+
+.controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+  color: #555;
+  gap: 4px;
+}
+
+.controls select {
+  font-size: 0.95rem;
+  padding: 6px 8px;
+}
+
+.in-progress {
+  font-size: 0.85rem;
+  color: #555;
+  margin: 0 0 8px;
+}
+
+.verdict {
+  font-size: 1.15rem;
+  line-height: 1.5;
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 0 0 16px;
+}
+
+.locations {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.locations ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.locations li {
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.not-enough-history {
+  color: #777;
+  font-size: 0.9rem;
+}

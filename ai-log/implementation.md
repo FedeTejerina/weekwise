@@ -1361,3 +1361,114 @@ would make Fastify reject before the handler runs, which is exactly what D15's f
 forbids.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I27 — T11: the React shell and URL state
+
+**Me:**
+> Excellent, now same as the last request, this time implementing both T11 and T12
+
+**Agent:** `web/src/useUrlState.ts`: plain `window.history`/`URLSearchParams`, no router — one
+page with three query params isn't a set of routes, and D15 only asks for the URL to hold
+state, not for navigation between views. `push: true` on a user-initiated control change (so
+back undoes it), `push: false` when reconciling an invalid URL to the server's resolved
+defaults (so back never lands on a URL that was never really a distinct choice).
+
+- **A real cross-package TypeScript problem, not a shortcut around it.** `web/`'s `tsconfig.json`
+  had `rootDir: "."`, which fails the moment `web/src` imports anything from `server/src` — even
+  a pure `import type`, because TS still loads the referenced file into the program for
+  type-checking before any erasure happens, and `outDir` being set was enough to make `rootDir`
+  enforcement fire regardless. Fixed by dropping `outDir` (meaningless under `noEmit: true`
+  anyway) rather than adding a project-reference workaround or duplicating types by hand.
+- **`web/src/api.ts` imports `EventType`/`WeeklyCheckResponse` as `import type` straight from
+  `server/src/weeklyCheck.ts`** — one response shape, not a hand-copied mirror that could drift
+  from what the API actually returns.
+- **Verified end to end in a real browser**, not just by reading the code: started the Fastify
+  API and the Vite dev server, drove both with a Playwright script (`chromium-cli` isn't
+  installed on this machine; installed Playwright's browser into a scratchpad-local directory,
+  never the repo). Selecting account 6 then week 2026-06-01 through the on-page controls
+  produced the exact URL T11's Done-when names; reload preserved it; browser back landed on the
+  state just before the last control change (account 6, the *previous* week) — not the original
+  default — which is what "returns to the previous selection" actually means once there's more
+  than one prior state to distinguish it from.
+- **The malformed-URL case (`?account=abc&type=&week=2026-13-99`) was checked for what actually
+  reaches the console, not just that the page rendered.** Captured `page.on('console')` and
+  `page.on('pageerror')` during that one navigation specifically (cleared right before it) —
+  only Vite's own HMR connection messages and the React DevTools suggestion appeared; nothing
+  from the app itself.
+- **Verified independently.** Dispatched the `witness` subagent cold with T11 and T12's Done-whens
+  together (see I28) to redrive the whole browser flow itself — new Playwright script, fresh
+  screenshots, its own reading of TASKS.md rather than trusting my summary. Every item matched.
+  It flagged, correctly, that it took the existence of T15's account-19/Site-A flag as given
+  context rather than re-deriving it (that anchor was independently verified back in T15/I23,
+  not re-litigated here) and that it verified account 19's location-section *absence* on the
+  page without separately re-querying that its `locationCount` is exactly 1 — both fair scoping
+  notes on what a browser-level check can and can't confirm by itself.
+
+Repo changes: `web/index.html`, `web/vite.config.ts`, `web/src/useUrlState.ts`,
+`web/src/api.ts`, `web/src/Controls.tsx` (new); `web/src/main.tsx` (replaced the placeholder);
+`web/tsconfig.json` (`outDir` removed). This log entry.
+
+**My call:** accepted — it fixed the cross-package tsconfig by dropping an outDir that noEmit made
+meaningless, rather than duplicating types by hand, and checked what actually reached the console
+on the malformed URL rather than just that the page rendered.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I28 — T12: rendering the §7 states
+
+**Me:** (same message as I27 — T11 and T12 built together)
+
+**Agent:** `web/src/Emphasized.tsx` renders T10's `Parts` directly — slices `text` at each
+`emphasis` range into `<strong>`, nothing else. `VerdictSection`, `LocationsSection`, and
+`InProgressLine` each call straight into `server/src/wording.ts`'s sentence functions (imported
+the same type-erased way as T11's `api.ts`) and hand the result to `Emphasized`; none of them
+contain a hand-written sentence.
+
+- **One real gap found and closed, not routed around: T7's response has no `weeksHave`/
+  `weeksNeeded` for `not_enough_history`, ever** — T10 had only ever been tested against a
+  constructed fixture that supplied them (log I3: the seed can't produce this state for
+  anything queryable). Rendering account 20 for real would have meant either fabricating
+  specific-looking numbers that are actually just made up, or crashing on `undefined`. Fixed
+  in `wording.ts` itself: `verdictSentence` now renders the short form — "Not enough history
+  yet." with no detail clause — when both are absent, and the full detailed sentence
+  (unchanged) when a caller actually supplies them. Added a unit test for the short form
+  alongside T10's existing constructed-fixture test for the long form, so both branches stay
+  pinned. This is a completion of T10's own function to handle an input shape it will actually
+  receive, not new functionality reaching into T7 or T8.
+- **The locations-quiet line uses `quietCount`, not the account's total `locationCount`** — §7's
+  own text says the quiet line should "never cover" not-enough-history locations, so the number
+  in it has to be the ones actually verified quiet, not the full location count, which could
+  overstate coverage on a week where some locations couldn't be evaluated. (No week in the seed
+  exercises this distinction, so it's a from-first-principles reading of the wording rule, not
+  something a screenshot could confirm.)
+- **The in-progress line's "current date" is derived from `weekStart + (daysIn − 1)` days, not
+  parsed out of the dataset's own UTC as-of timestamp** — the as-of moment is a single global UTC
+  instant, but each account's in-progress week and day count are already computed in *that
+  account's own* local timezone server-side (T9); re-deriving the display date from the UTC
+  string in the browser would risk landing on the wrong calendar day for a timezone far from
+  UTC, even though it happens not to for anything in this seed.
+- **All five states verified in a real browser and screenshotted**, sent to you directly — flagged
+  up (528, Site N in a 15-location list), quiet (34, zero `%` characters anywhere on the page),
+  dropped to zero ("No leads at all", zero `%`), single-site suppression (account 19 — no
+  location section at all, despite Site A being a real flag underneath), and not-enough-history
+  (renders cleanly, no crash).
+- **Verified independently**, in the same dispatch as I27: the witness redrove all five states
+  itself with its own fresh Playwright run and confirmed every rendered sentence character-for-
+  character, the absence of `%` in the two cases that require it, and the absent `.locations`
+  element for account 19 — then cleaned up its own background servers and confirmed via
+  `netstat` that nothing was left listening, the same discipline this session needed reminding
+  of the hard way during T8's manual curl check (log I26).
+
+Repo changes: `web/src/Emphasized.tsx`, `web/src/VerdictSection.tsx`,
+`web/src/LocationsSection.tsx`, `web/src/InProgressLine.tsx`, `web/src/App.tsx`,
+`web/src/style.css` (new); `server/src/wording.ts` (short-form not-enough-history sentence);
+`server/test/unit/wording.test.ts` (test for the short form); this log entry.
+
+**My call:** accepted — it found that T7 never returns weeksHave/weeksNeeded, so rendering account 20 would have meant fabricating numbers or crashing, and closed it in wording.ts with both branches
+pinned.
+
+**Who was right:** (no disagreement)
