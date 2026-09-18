@@ -53,13 +53,9 @@ Then open the app and pick an account from the URL or the picker.
 **Tests:** `npm test` runs all four Vitest projects (`unit`, `sql`, `api`, `web`). Docker must be
 running first — the `sql` project executes real queries against the seeded database.
 
-> **Status:** every command above has been run individually, repeatedly, throughout
-> development — `docker compose up -d`, `npm ci`, `npm run db:setup`, and `npm run dev` all
-> work exactly as written. What's still outstanding is the one measurement that can only be
-> taken once, at the very end: a timed run of exactly these four commands against a completely
-> fresh clone, recorded in [Clean-clone run](#clean-clone-run) below. That run has to wait for
-> the current changes to be committed — timing a clone of an uncommitted tree would measure the
-> wrong repo.
+> **Status:** all four commands above have been run, in order, against a genuinely fresh clone,
+> reaching a working page — see [Clean-clone run](#clean-clone-run) below for the timing and
+> the one machine-specific deviation it needed.
 
 ## What moment is the page showing, and why isn't it "today"?
 
@@ -218,8 +214,28 @@ documented flow:
 
 ## Clean-clone run
 
-**Pending.** This has to be the last thing recorded in this README, after everything else is
-committed — timing a clone of an uncommitted tree would measure a repo nobody else could
-actually clone. Once committed: a fresh `git clone` into an empty directory, the four commands
-above run exactly as written and in that order, reaching a working page at
-`/?account=6&type=call_received&week=2026-06-01`, with the elapsed time recorded here.
+Run after commit `7fb79a6`, `git clone` into an empty directory outside this working tree, then
+the four commands above in order. One deviation, both documented above: this machine's native
+Postgres already holds 5432, so `DB_PORT=5433` was set for the three commands that touch it —
+exactly the fallback the `Assumptions` section already names for that situation, not a change to
+the commands themselves.
+
+| Step | Real elapsed |
+|---|---|
+| `docker compose up -d` | 1s |
+| `npm ci` (587 packages) | 13s |
+| `npm run db:setup` (migration + seed) | 6s |
+| `npm run dev`, until both `/api/accounts` and the Vite page answered `200` | 18s |
+| working page confirmed in a real browser (Playwright, not curl) | +3s |
+| **Total, `docker compose up -d` to a working page** | **~53s** |
+
+Confirmed at `/?account=6&type=call_received&week=2026-06-01`: the flagged-up verdict (528,
+Site N in the location list) actually rendered, and the browser console logged zero errors —
+not just that the dev servers answered `200`.
+
+Two caveats, so the number isn't read as colder than it is: the Postgres image (`postgres:16`)
+was already pulled on this machine, so `docker compose up -d` didn't pay for that; and `npm ci`
+ran against a warm local npm cache. A genuinely first-time machine adds an image pull and a real
+package download on top of the ~53s above — bounded by network speed, not by anything in this
+repo. The clone, its containers and its volume were torn down (`docker compose down -v`) after
+the run; nothing from it was left behind.

@@ -1665,6 +1665,56 @@ Repo changes: `README.md` (cut-list accounting, the three R1 findings, next-day 
 **Ready for part 4 once this is committed** — the timing run needs a tree an outside clone would
 actually see, not the working tree this session has been editing.
 
-**My call:**
+**My call:** accepted — names all five cuts as shipped, prices each R1 gap by its re-verification cost, orders next steps by cost.
 
-**Who was right:**
+**Who was right:** (no disagreement)
+
+---
+
+## I32 — T16 (part 4): the clean-clone timed run
+
+**Me:**
+> Commit done, tackle part 4 which is still pending.
+
+**Agent:** Confirmed the commit first (`git log` showed `7fb79a6`, `git status --porcelain`
+clean) rather than trusting the message alone, then cloned `git clone
+C:/Users/Windows/Documents/weekwise` into a fresh directory in the session scratchpad (this repo
+has no remote, so a local-path clone is the only "fresh clone" available; noted as a caveat
+below) and ran the README's four commands in order, timing each with real wall-clock timestamps.
+
+- **One deviation from "exactly as written," flagged rather than absorbed silently:** this
+  machine's native Postgres already holds port 5432 (confirmed via `netstat` before starting,
+  same collision I11 hit and fixed the scope of back then), so `DB_PORT=5433` was set for
+  `docker compose up -d`, `npm run db:setup`, and `npm run dev`. This is the exact fallback the
+  README's own `Assumptions` section already documents for this situation, not an undocumented
+  change to the commands' text.
+- **Timed each step, then confirmed the page actually works, not just that the servers
+  answered:** `docker compose up -d` 1s, `npm ci` 13s (587 packages), `npm run db:setup` 6s
+  (migration + seed), then polled `/api/accounts` and the Vite root until both answered `200`
+  (18s), then loaded `/?account=6&type=call_received&week=2026-06-01` in a real Playwright
+  browser (not curl) and asserted on rendered text — "528" and "Site N" both present, zero
+  console errors — rather than trusting the `200`. Total, `docker compose up -d` to a confirmed
+  working page: **~53s**.
+- **Two caveats stated rather than let the number read colder than it is:** `postgres:16` was
+  already pulled on this machine (`docker images` confirmed it, 642MB), so the Docker step paid
+  no image-pull cost; and `npm ci` ran against a warm local npm cache. A genuinely first-time
+  machine adds an image pull and a real package download on top of the ~53s, bounded by network
+  speed, not by anything in the repo.
+- **Hit the same orphaned-process issue as earlier in the session:** `TaskStop` on the
+  backgrounded `npm run dev` didn't actually free ports 3000/5173 — `netstat` still showed both
+  `LISTENING` afterward. Diagnosed the same way as before (not re-litigated as new), fixed with
+  `taskkill //F //PID ... //T` on both, and confirmed both ports free before continuing.
+- **Cleaned up fully:** `docker compose down -v` on the temporary stack (container, volume,
+  network all removed) so nothing from the verification run persists outside this log entry and
+  the README's own numbers.
+- **README updated** with the actual table (replacing "**Pending.**"), the `DB_PORT` deviation
+  named up front, both caveats, and the `Running it` status callout swapped from "outstanding"
+  to a pointer at the finished section.
+
+Repo changes: `README.md` (`Clean-clone run` filled in with real numbers; `Running it` status
+callout updated); this log entry. Nothing under `seed/` touched; no other file in the working
+tree changed (`git status --porcelain` before starting showed nothing beyond the prior commit).
+
+**My call:** accepted — timed from a clean clone to a rendered page, flagged the DB_PORT deviation, stated both warm-cache caveats honestly.
+
+**Who was right:** (no disagreement)
