@@ -655,3 +655,70 @@ witness how to reach an empty database but withheld its own output, which is the
 the witness's matching numbers mean anything.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I14 — T4: aggregation SQL — dedup, local weeks, zero-fill, as-of
+
+**Me:**
+> Everything checked from the T3 implementation. You can start with T4 now
+
+**Agent:** Added `server/src/db/pool.ts` (the app's own runtime connection, independent of
+`migrate-config.js`'s tooling connection, same `DB_PORT` override) and
+`server/src/db/aggregation.ts`, three queries:
+
+- `getAsOf`: `MAX(occurred_at)` across all events, cast to text (D7's as-of moment).
+- `getAccountWeekRanges`: per account, in that account's own timezone, the first local Monday
+  fully inside the data window and the latest local week that had fully elapsed as of the as-of
+  moment — both derived from `MIN`/`MAX(occurred_at)`, not a hard-coded date, per T4's own
+  instruction. The "first full week" logic specifically checks whether the local minimum instant
+  falls exactly on a Monday boundary; if not (it never does here — the seed starts mid-Sunday
+  everywhere), the partially-covered week is excluded and the next Monday is used instead.
+- `getWeeklyLocationCounts`: `SELECT DISTINCT` dedup, `AT TIME ZONE 'UTC' AT TIME ZONE
+  a.timezone` bucketing, a `generate_series` week list per account joined against every
+  location with `LEFT JOIN` + `COUNT(*) FILTER (...)` per event type (zero-fills automatically —
+  a location/week with no matching event still gets a row with all three counts at 0). Week
+  starts come back as `text`, never a parsed `Date`, so nothing here depends on the Node
+  process's own timezone.
+
+`scripts/agg-check.ts` calls all three and **asserts** the four Done-when facts itself (throws
+and exits 1 on any mismatch) rather than just printing numbers for a human to eyeball — including
+a stronger zero-fill check than the raw row count: every one of the 69 locations is checked to
+have all 25 distinct weeks present, not just that `rows.length` happens to equal `69 × 25`.
+
+**All four facts reproduced exactly, on the first real run against the seeded database** — no
+retries, no adjustment: as-of `2026-07-27T22:20:34Z`; every one of the 20 accounts independently
+computing the same default week `2026-07-20` and earliest full week `2026-02-02`; 1725 rows, 69
+locations, 25 weeks, zero gaps; totals 12,517 / 7,708 / 3,023 / 1,786; the New York case landing
+on local `2026-06-02`, week of `2026-06-01`. These match every number `PLAN.md` and `TASKS.md`
+already carry, produced independently through actual SQL rather than copied.
+
+- **One typecheck failure caught before calling this done:** `rows[0].asOf` in `getAsOf` — with
+  `noUncheckedIndexedAccess` on, `rows[0]` types as possibly `undefined`. Fixed with a `rows[0]!`
+  plus a comment stating why it's safe (an aggregate with no `GROUP BY` always returns exactly
+  one row), rather than turning the strict flag off.
+- **Checked the query doesn't quietly depend on the Node process's own timezone**, since
+  bucketing bugs are usually exactly this kind of thing: reran the script under
+  `TZ=America/Los_Angeles` and got byte-identical output. Every timestamp the script reads comes
+  back as SQL-cast `text`, never through `pg`'s default `Date`-parsing path.
+- **Verified independently.** Dispatched the `witness` subagent cold with the four facts and the
+  exact commands to run (including the `TZ=America/Los_Angeles` rerun and `npm run typecheck`,
+  since this task added new TypeScript files); it reran all of them and confirmed every "ok:"
+  line, a clean exit 0 both times, and a clean typecheck. It flagged, correctly, that it didn't
+  read the SQL or the TypeScript itself — it only ran what it was asked to run and reported the
+  output.
+- **A gap noticed, not fixed:** `npm run typecheck` only checks the `server` and `web`
+  workspaces — nothing at the repo root type-checks `scripts/*.ts` (this is also true of T3's
+  `scripts/seed.ts`, unnoticed until now). `agg-check.ts` happens to be clean, but nothing would
+  catch it if it weren't. Flagging rather than adding a root tsconfig unasked, since T4 didn't
+  scope that in and it touches every future `scripts/` file, not just this one.
+
+Repo changes: `server/src/db/pool.ts`, `server/src/db/aggregation.ts`, `scripts/agg-check.ts`
+(all new); this log entry. No `seed/` writes.
+
+**My call:** accepted. All four facts reproduced exactly on the first run, with no retries and
+no adjustment — the SQL was written from the spec and independently produced the numbers
+the plan had already measured in Python. Two paths, same answer, is the strongest evidence
+this aggregation is right.
+
+**Who was right:** (no disagreement)
