@@ -1472,3 +1472,45 @@ Repo changes: `web/src/Emphasized.tsx`, `web/src/VerdictSection.tsx`,
 pinned.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I29 — T13: web component tests
+
+**Me:**
+> Ok, I would like to take the time we have left to tackle the web component testing, so go
+> on with T13
+
+**Agent:** `@testing-library/react` + `@testing-library/dom` (droppable, so kept the dependency
+footprint minimal — no `@testing-library/jest-dom`; a bare `screen.getByText(...)` already
+throws when nothing matches, so it doubles as the assertion without an extra package for
+`.toBeInTheDocument()`).
+
+- **`web/test/App.test.tsx` mocks `fetch` with response shapes built from the same measured
+  numbers T7/T15 already pin** (account 6 calls 2026-06-01 → 528, account 7 → 3, etc.), not
+  invented fixtures — so these tests exercise the same real facts the browser screenshots did,
+  just repeatably. One test per §7 sentence state (quiet, flagged up ≥2×, flagged up <2×,
+  flagged down, flagged down to zero, not enough history) plus the single-site suppression case
+  T13 names explicitly. All eight passed on the first real run.
+- **Proved the two "no %" assertions and the single-site assertion aren't vacuous, before
+  calling this done — not after being asked.** Injected a literal `%` into the quiet-state
+  sentence in `wording.ts`, reran, watched the quiet test fail with the actual rendered string
+  in the diff, reverted, reran clean. This is the same discipline as T4's `usualRange` brute
+  force and T5's fixture-agreement check: an assertion that can't fail isn't pinning anything.
+- **Verified independently, and it ran the identical mutation check itself**, from a cold read
+  of `wording.ts`, not from being told where to inject the break or shown my own result —
+  confirmed the quiet test fails with `%` present and only that one test fails (the drop-to-zero
+  and single-site tests, on different code paths, stayed green), then confirmed the revert was
+  byte-identical via `git diff --stat` before rerunning clean. Also confirmed the single-site
+  query (`.locations` class) targets the real DOM root `LocationsSection` renders, not a
+  coincidentally-absent piece of text that would pass even if the section rendered under a
+  different structure.
+
+Repo changes: `web/test/App.test.tsx` (new); `web/package.json` and `package-lock.json`
+(`@testing-library/react`, `@testing-library/dom`); this log entry.
+
+**My call:** accepted — it injected a % into wording.ts to prove the no-percentage assertions can
+actually fail, and the witness reran that mutation from a cold read rather than being told where
+to break it.
+
+**Who was right:** (no disagreement)
