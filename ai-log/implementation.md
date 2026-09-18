@@ -863,3 +863,57 @@ Repo changes: `README.md` (one bullet); this log entry.
 **My call:** accepted
 
 **Who was right:** (no disagreement)
+
+---
+
+## I18 — Chore: exact-pinned dependencies, not a task
+
+**Me:**
+> Small chore before T5b, not a task: add .npmrc with save-exact=true, and rewrite the existing ^
+> and ~ ranges in every package.json to the exact versions currently in the lockfile.
+> save-exact only affects future installs, so the existing ones need rewriting.
+> Verify with npm ci that nothing moved.
+>
+> Don't add ignore-scripts, esbuild needs its postinstall and npm has no per-package allowlist.
+> And note in the README that this is about reproducible installs, not supply chain hardening.
+>
+> Framing for the log: this wasn't in T1's scope and isn't a missed task, it's a decision I'm
+> making now, once there were enough dependencies for it to matter.
+
+**Agent:** A repo-wide decision, not a `TASKS.md` item — logged as one because CLAUDE.md says to
+log every exchange that changes something, not because it belongs on the task list.
+
+- **`.npmrc`** with exactly `save-exact=true`. No `ignore-scripts`, as told — left it out rather
+  than adding and then explaining it away, since the reasoning (esbuild's postinstall, no
+  per-package allowlist) was already given.
+- **Every `^`/`~` rewritten to the exact version already in `package-lock.json`,** in the root,
+  `server/`, and `web/` `package.json` files — checked against the lockfile's resolved versions
+  first rather than assumed, though in this case every range still matched its resolved version
+  exactly (no dependency had drifted since it was pinned), so the rewrite was a straight `^`
+  strip, not a version bump.
+- **Verified `npm ci` first, then verified the pin mechanism itself, not just its output.**
+  `npm ci` reported the same resolved versions as before (checked against `npm ls --depth=0` and
+  per-workspace). That only proves the *rewrite* didn't move anything — it doesn't prove
+  `save-exact` itself works, so before calling this done: installed a throwaway package
+  (`tiny-invariant`) with no version specified, confirmed npm wrote `"1.3.3"` with no `^`, then
+  `npm uninstall`ed it and reran `npm ci` to confirm the repo was back to exactly its prior state
+  with nothing left over.
+- **Verified independently.** Dispatched the `witness` subagent cold to reread all three
+  `package.json` files plus `.npmrc`, rerun `npm ci`, cross-check every `npm ls` version against
+  every package.json version string, rerun `npm run typecheck` and the full `npm test`, and
+  confirm `ignore-scripts` is absent. All matched. It also flagged, correctly, that it took
+  "Test Files 4 passed (4)" as evidence of four Vitest projects without independently rereading
+  `vitest.config.ts` to confirm that count means projects rather than just files — a fair
+  distinction, and this repo's four test files are one per project, so the two readings agree
+  here, but the witness was right not to assume that without checking.
+- **README note added exactly as dictated:** reproducible installs, not supply-chain hardening —
+  a version pin doesn't vet what a package does, only that it doesn't silently change under you.
+
+Repo changes: `.npmrc` (new); `package.json`, `server/package.json`, `web/package.json`
+(ranges rewritten to exact versions); `package-lock.json`; `README.md` (one bullet); this log
+entry.
+
+**My call:** accepted — it verified the pin mechanism, not just the current state: installed a
+package with no version to confirm save-exact writes exact, then reverted cleanly.
+
+**Who was right:** (no disagreement)

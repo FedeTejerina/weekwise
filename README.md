@@ -155,3 +155,7 @@ template.
   `testcontainers` to a version that requires Node 22.22, which this Node doesn't meet. It's a
   dev-only, test-only dependency that never ships, and the `uuid` it pulls in generates container
   labels, not attacker-controlled input.
+- **Every dependency is pinned to an exact version** (`.npmrc`'s `save-exact=true`, and every
+  `package.json` written without a `^` or `~`). This is about reproducible installs — the same
+  clean clone giving the same `node_modules` a year from now — not supply-chain hardening; it
+  doesn't check what a package does, only that the version doesn't silently drift.
