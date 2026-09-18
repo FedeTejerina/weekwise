@@ -201,6 +201,34 @@ describe('the six account states (§7) render with no hand-written sentence', ()
   });
 });
 
+describe('locations quiet line (R1 #1)', () => {
+  it('is not shown when every location is not-enough-history — no "0 locations"', async () => {
+    setUrl('?account=6&type=call_received&week=2026-02-02');
+    mockFetch(
+      [{ id: 6, name: 'Metro Collision Centers', timezone: 'America/New_York', locationCount: 15 }],
+      {
+        asOf: AS_OF,
+        week: { start: '2026-02-02', end: '2026-02-08', isLatest: false },
+        inProgress: null,
+        weeks: FULL_WEEKS,
+        account: { id: 6, name: 'Metro Collision Centers', locationCount: 15 },
+        verdict: { state: 'not_enough_history', weeksHave: 1, weeksNeeded: 13 },
+        locations: {
+          window: { start: '2026-01-12', end: '2026-02-08' },
+          flagged: [],
+          notEnoughHistory: Array.from({ length: 15 }, (_, i) => `Site ${String.fromCharCode(65 + i)}`),
+          quietCount: 0,
+        },
+      },
+    );
+
+    render(<App />);
+    await screen.findByText(/Not enough history yet for Site A/);
+    expect(screen.queryByText(/Nothing unusual/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/0 locations/);
+  });
+});
+
 describe('single-site suppression (D16)', () => {
   it('account 19 — no location section rendered at all, even though `locations` is simply absent from the API response', async () => {
     setUrl('?account=19&type=lead_created&week=2026-05-18');

@@ -12,6 +12,9 @@ function check(condition: boolean, message: string): void {
 
 async function main() {
   const asOf = await getAsOf(pool);
+  if (asOf === null) {
+    throw new Error('as-of is null — the database has no events. Run `npm run db:setup`.');
+  }
   console.log(`as-of: ${asOf.replace(' ', 'T')}Z`);
   check(asOf === '2026-07-27 22:20:34', 'as-of is 2026-07-27 22:20:34Z');
 

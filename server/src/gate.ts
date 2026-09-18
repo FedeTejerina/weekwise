@@ -17,7 +17,7 @@ export interface GateResult {
 }
 
 /** Full weeks of baseline required before a window (D8): drop the highest and lowest of 12. */
-const BASELINE_WEEKS = 12;
+export const BASELINE_WEEKS = 12;
 
 /** `m` is floored here so `r = 10*m` stays positive (PLAN.md §4). */
 const FLOOR_M = 0.1;

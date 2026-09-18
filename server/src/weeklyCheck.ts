@@ -10,7 +10,7 @@ import {
   type InProgressCounts,
   type WeeklyLocationCounts,
 } from './db/aggregation.js';
-import { evaluateWindow, usualRange, type GateResult, type GateState } from './gate.js';
+import { BASELINE_WEEKS, evaluateWindow, usualRange, type GateResult, type GateState } from './gate.js';
 
 export type EventType = 'call_received' | 'lead_created' | 'appointment_set';
 
@@ -40,6 +40,12 @@ export interface VerdictResponse {
   usualRange?: [number, number];
   /** Present only when flagged (D11): positive above typical, negative below. */
   changePct?: number;
+  /** Only for `not_enough_history`, and only when the account has *some* history — how many
+   * full weeks it has, against how many the account verdict needs (13, D8). Absent for an
+   * account with zero events ever (R1 #3): there's no true "weeks have" to report there, and
+   * `evalIndex + 1` would print a number *larger* than `weeksNeeded` while still being wrong. */
+  weeksHave?: number;
+  weeksNeeded?: number;
 }
 
 export interface LocationFlag {
@@ -63,7 +69,8 @@ export interface InProgress {
 }
 
 export interface WeeklyCheckResponse {
-  asOf: string;
+  /** `null` only when `activity_events` is empty (R1 #9) — an unseeded database. */
+  asOf: string | null;
   week: { start: string; end: string; isLatest: boolean };
   /** D18: the still-elapsing current week, as a plain fact — never compared, never baselined,
    * never part of a window. `null` only when the as-of moment falls exactly on a week boundary. */
@@ -89,11 +96,14 @@ export interface LocationEvaluation {
  * accident (log I7/T15).
  */
 export interface AccountWeekEvaluation {
-  asOf: string;
+  asOf: string | null;
   weeks: string[];
   evalIndex: number;
   account: { id: number; name: string };
   locationCount: number;
+  /** Whether this account has ever recorded a single event — distinct from having enough
+   * *calendar* weeks (R1 #3): an account can fail one without failing the other. */
+  hasAnyEvent: boolean;
   weekStart: string;
   isLatest: boolean;
   accountResult: GateResult;
@@ -121,11 +131,23 @@ function changePctFor(count: number, typical: number): number {
 }
 
 /**
- * Pure: the account verdict, from the gate's own result alone — no dependency on `inProgress`
- * or anything else, which is exactly what T9's deep-equal test checks by calling this same
+ * Pure: the account verdict, from the gate's own result plus just enough history context to
+ * word the not-enough-history sentence (§7) correctly — still no dependency on `inProgress` or
+ * anything else, which is exactly what T9's deep-equal test checks by calling this same
  * function against a run where `inProgress` was never computed at all.
+ *
+ * `history` is only consulted for `not_enough_history`. The account's own evaluated-week
+ * position (`evalIndex`) plus 1 is exactly how many full weeks of calendar history existed up
+ * to and including that week — §7's "you have N" — *but only when the account has ever had a
+ * single event*. An account with zero events ever (log I21's `hasAnyEvent` guard) can have a
+ * large `evalIndex` while still genuinely having no history at all; reporting
+ * `evalIndex + 1` there would print a number *larger* than `weeksNeeded` while the verdict is
+ * still correctly "not enough" (R1 #3) — so that case keeps the short form instead.
  */
-export function buildVerdict(accountResult: GateResult): VerdictResponse {
+export function buildVerdict(
+  accountResult: GateResult,
+  history?: { evalIndex: number; hasAnyEvent: boolean },
+): VerdictResponse {
   const verdict: VerdictResponse = { state: accountResult.state };
   if (accountResult.state !== 'not_enough_history') {
     verdict.count = accountResult.count!;
@@ -134,6 +156,9 @@ export function buildVerdict(accountResult: GateResult): VerdictResponse {
     if (accountResult.state === 'flagged_up' || accountResult.state === 'flagged_down') {
       verdict.changePct = changePctFor(accountResult.count!, accountResult.typical!);
     }
+  } else if (history?.hasAnyEvent) {
+    verdict.weeksHave = history.evalIndex + 1;
+    verdict.weeksNeeded = ACCOUNT_WINDOW_WEEKS + BASELINE_WEEKS;
   }
   return verdict;
 }
@@ -146,7 +171,7 @@ export function buildVerdict(accountResult: GateResult): VerdictResponse {
  * implementations of the same computation is exactly what drifts).
  */
 export interface WeeklyCheckData {
-  asOf: string;
+  asOf: string | null;
   accounts: AccountSummary[];
   ranges: AccountWeekRange[];
   allLocationRows: WeeklyLocationCounts[];
@@ -163,7 +188,8 @@ export async function fetchWeeklyCheckData(pool: Pool): Promise<WeeklyCheckData>
   ]);
   // getAsOf's `::text` cast avoids pg's Date parsing but leaves a space, not the `T`/`Z` PLAN.md
   // §6 publishes; occurred_at is already UTC, so this is textual reformatting, not a conversion.
-  const asOf = `${asOfText.replace(' ', 'T')}Z`;
+  // `null` when activity_events is empty (R1 #9) — never `.replace()` a value that isn't there.
+  const asOf = asOfText === null ? null : `${asOfText.replace(' ', 'T')}Z`;
   return { asOf, accounts, ranges, allLocationRows, inProgressRows };
 }
 
@@ -249,6 +275,7 @@ export function evaluateAccountWeekFromData(
     evalIndex,
     account: { id: account.id, name: account.name },
     locationCount,
+    hasAnyEvent: accountHasAnyEvent,
     weekStart,
     isLatest: weekStart === range.defaultWeek,
     accountResult,
@@ -265,7 +292,10 @@ export async function weeklyCheck(
   const data = await fetchWeeklyCheckData(pool);
   const evaluation = evaluateAccountWeekFromData(data, accountId, eventType, weekStart);
   const { locationCount } = evaluation;
-  const verdict = buildVerdict(evaluation.accountResult);
+  const verdict = buildVerdict(evaluation.accountResult, {
+    evalIndex: evaluation.evalIndex,
+    hasAnyEvent: evaluation.hasAnyEvent,
+  });
 
   const response: WeeklyCheckResponse = {
     asOf: evaluation.asOf,

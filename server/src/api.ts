@@ -53,9 +53,18 @@ export function buildApp(pool: Pool): FastifyInstance {
     },
   );
 
-  app.get('/api/weekly-check', async (request) => {
+  app.get('/api/weekly-check', async (request, reply) => {
     const query = request.query as Record<string, unknown>;
     const data = await fetchWeeklyCheckData(pool);
+
+    // An unseeded database (`db:migrate up` with no `db:seed`) has no accounts at all — there
+    // is no "first account" to fall back to, so this can't be a D15 fallback; it's a genuinely
+    // different, handled response rather than the crash `data.accounts[0]!` would otherwise be
+    // (R1 #9).
+    if (data.accounts.length === 0) {
+      reply.code(503);
+      return { error: 'No accounts are seeded yet. Run `npm run db:setup`.' };
+    }
 
     const requestedAccountId = Number(query.account);
     const accountExists = data.accounts.some((a) => a.id === requestedAccountId);

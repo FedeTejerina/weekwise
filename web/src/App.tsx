@@ -13,12 +13,20 @@ export function App() {
   const [urlState, setUrlState] = useUrlState();
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
   const [data, setData] = useState<WeeklyCheckResponse | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Kept separate (R1 #6): these come from two independent requests, and whichever resolves
+  // last used to overwrite whatever the other had just set — a failed /api/accounts could be
+  // silently cleared by a successful weekly check, leaving a verdict on screen with no controls
+  // and no visible error.
+  const [accountsError, setAccountsError] = useState<string | null>(null);
+  const [weeklyCheckError, setWeeklyCheckError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAccounts()
-      .then(setAccounts)
-      .catch(() => setLoadError('Could not load accounts.'));
+      .then((result) => {
+        setAccounts(result);
+        setAccountsError(null);
+      })
+      .catch(() => setAccountsError('Could not load accounts.'));
   }, []);
 
   useEffect(() => {
@@ -27,7 +35,7 @@ export function App() {
       .then((response) => {
         if (cancelled) return;
         setData(response);
-        setLoadError(null);
+        setWeeklyCheckError(null);
 
         // D15: the server already fell back to defaults for anything invalid; reconcile the
         // URL to match what it actually resolved, rather than leaving a stale/invalid URL
@@ -42,7 +50,7 @@ export function App() {
         }
       })
       .catch(() => {
-        if (!cancelled) setLoadError('Could not load this account\'s weekly check.');
+        if (!cancelled) setWeeklyCheckError('Could not load this account\'s weekly check.');
       });
     return () => {
       cancelled = true;
@@ -69,7 +77,8 @@ export function App() {
     <main>
       <h1>WeekWise</h1>
 
-      {loadError && <p role="alert">{loadError}</p>}
+      {accountsError && <p role="alert">{accountsError}</p>}
+      {weeklyCheckError && <p role="alert">{weeklyCheckError}</p>}
 
       {accounts && data && (
         <Controls

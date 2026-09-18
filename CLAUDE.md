@@ -35,6 +35,7 @@ entries follow. See [`ai-log/README.md`](ai-log/README.md) for how the log is or
 |---|---|
 | Reading the problem, building `PLAN.md` | `ai-log/planning.md` — **closed 2026-09-17, do not append** |
 | Implementation | `ai-log/implementation.md` |
+| Review | `ai-log/review.md` |
 
 Create the phase's file if it doesn't exist yet, with the same header fields (`Started`,
 `Models`, `Language`), and add a row to the table in `ai-log/README.md`.

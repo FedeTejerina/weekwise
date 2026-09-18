@@ -1514,3 +1514,100 @@ actually fail, and the witness reran that mutation from a cold read rather than 
 to break it.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I30 — Seven fixes from the R1 code review
+
+**Me:**
+> Before the T16 changes: seven fixes from R1 in ai-log/review.md. The other three findings I'm
+> documenting in the README instead so don't touch them.
+>
+> 1. R1 #2 — add a root `dev` script that starts the API and Vite together. README line 48 and
+>    PLAN §9 both name `npm run dev` and it doesn't exist at the root.
+> 2. R1 #1 — render the locations quiet line only when quietCount > 0.
+> 3. R1 #3 — restore §7's full not-enough-history sentence. weeksHave and weeksNeeded are
+>    available (evalIndex + 1, and 13); thread them through. Keep the short form only for
+>    accounts with no events at all, that's the one case I28 got right.
+> 4. R1 #4 — add the pool 'error' listener.
+> 5. R1 #10 — move the UTC timestamp parser into pool.ts, so production does what PLAN §5
+>    already claims it does.
+> 6. R1 #6 — split the two fetch errors into separate state so a failed /api/accounts isn't
+>    cleared by a successful weekly check.
+> 7. R1 #9 — getAsOf is typed string but MAX() over an empty table returns null. Make the type
+>    honest and handle it at the call sites rather than crashing with a 500.
+>
+> Log in implementation.md, continuing the I numbering. Re-run the full suite after #3 since
+> it touches wording.ts and the §7 sentences are pinned verbatim.
+>
+> Dispatch the witness once at the end over all seven, and have it check the "0 locations" line
+> is actually gone on a week that used to show it
+
+**Agent:** All seven landed together, logged as one entry since they were asked for and
+verified as one batch — but each is independently traceable to its R1 finding number, below.
+
+- **R1 #2.** Root `dev` script via `concurrently` (`dev:api` + `dev:web`, the latter delegating
+  to the `web` workspace's own `dev`). Not folded into `dev:api` itself, so each half is still
+  independently runnable. Started it for real, polled both ports until they served actual
+  content (not a fixed sleep), then stopped it and confirmed via `netstat` that nothing was left
+  listening.
+- **R1 #1.** `LocationsSection`'s quiet line now requires `flagged.length === 0 && quietCount >
+  0` — previously `flagged.length === 0` alone was enough, which is also true when every
+  location is `not_enough_history` (15 of the 25 selectable weeks, on any multi-site account,
+  per the review's own count). Confirmed live against exactly the shape the review found:
+  `account=6&week=2026-02-02` returns `flagged: [], quietCount: 0, notEnoughHistory: [15
+  names]`, and the not-enough-history line now renders alone, no quiet line above it.
+- **R1 #3.** `buildVerdict` takes an optional `history: { evalIndex, hasAnyEvent }`; the full
+  §7 sentence (`weeksHave = evalIndex + 1`, `weeksNeeded = 13`) renders whenever the account has
+  ever had an event, and the short form is now reachable *only* when `hasAnyEvent` is false —
+  not, as I28 had it, for the whole state. Exported `gate.ts`'s `BASELINE_WEEKS` rather than
+  re-hardcoding `12` a second time in `weeklyCheck.ts`. Verified live: account 1 at
+  2026-02-02 (the earliest evaluable week, `evalIndex = 0`) now returns exactly
+  `{"state":"not_enough_history","weeksHave":1,"weeksNeeded":13}`; account 20 — zero events
+  ever — still returns exactly `{"state":"not_enough_history"}`, unchanged. Added both as real
+  test cases (`server/test/api/weekly-check.test.ts`), not just manual `curl` checks, since this
+  is precisely the distinction the review said I28 got wrong for every account but one.
+- **R1 #4 and #10, same file, same visit.** `pool.ts` gets a `pool.on('error', …)` listener
+  (an idle client losing its connection would otherwise take the whole process down with it).
+  The UTC timestamp-parser pin moved out of the test-only setup file into a new
+  `server/src/db/timestampParser.ts`, imported by both `pool.ts` (production) and
+  `test/setup/pg-timestamp-parser.ts` (which now just re-exports the import) — one
+  `types.setTypeParser` call in the whole repo, not two that could drift, closing exactly the
+  gap the review named: tests were running a configuration production never did.
+- **R1 #6.** `App.tsx`'s single `loadError` split into `accountsError` and `weeklyCheckError`,
+  each cleared only by its own request's success. The bug was real: a failed `/api/accounts`
+  followed by a successful weekly check used to call `setLoadError(null)` and silently erase the
+  only sign anything had gone wrong, leaving a verdict on screen with no controls.
+- **R1 #9.** `getAsOf` now returns `string | null` — `MAX()` over zero rows is `NULL`, not a
+  guarantee. `fetchWeeklyCheckData` builds `asOf` null-safely instead of blindly calling
+  `.replace()` on it, and `/api/weekly-check` now checks `data.accounts.length === 0` (an
+  unseeded database) and returns a deliberate 503 before ever reaching `data.accounts[0]!` —
+  the other crash site the review named. `scripts/agg-check.ts` needed one matching update
+  (it now throws its own clear error if `asOf` comes back null, rather than crashing on
+  `.replace`).
+- **Full suite re-run after #3, as asked, since it's the one that touches `wording.ts` and the
+  §7 sentences are pinned verbatim** — all of them still pass unchanged, because the constructed
+  fixtures that pin the long and short forms already supplied `weeksHave`/`weeksNeeded`
+  explicitly or omitted them explicitly; only the *wiring* changed, not the template.
+- **Verified independently, once, over all seven** — dispatched the `witness` subagent cold
+  with `ai-log/review.md`'s actual R1 text (not my summary of it) and the seven fixes to check
+  against it. It re-ran the `dev` script itself and confirmed real content on both ports before
+  stopping it cleanly; re-derived the "0 locations" scenario live rather than trusting the
+  description, then traced `LocationsSection`'s render logic against that exact response shape
+  by hand; and confirmed the two not-enough-history curls byte-for-byte. All seven matched.
+  Full suite: 75 tests, all passing, typecheck clean.
+
+Repo changes: `package.json` and `package-lock.json` (`dev`/`dev:web` scripts, `concurrently`);
+`web/src/LocationsSection.tsx`, `web/src/App.tsx`, `web/src/VerdictSection.tsx` (R1 #1, #6, #3);
+`server/src/weeklyCheck.ts` (R1 #3, #9); `server/src/gate.ts` (`BASELINE_WEEKS` exported);
+`server/src/db/pool.ts` (R1 #4, #10); `server/src/db/timestampParser.ts` (new, R1 #10);
+`server/test/setup/pg-timestamp-parser.ts` (R1 #10); `server/src/db/aggregation.ts`,
+`server/src/api.ts` (R1 #9); `scripts/agg-check.ts` (null-safe `asOf`);
+`server/test/api/weekly-check.test.ts`, `web/test/App.test.tsx` (new coverage for R1 #3 and
+#1); this log entry. No `seed/` writes.
+
+**My call:** accepted — it verified each fix live against the shapes the review actually found, not
+just that the suite stayed green, and it gave the witness R1's own text rather than its summary
+of it.
+
+**Who was right:** (no disagreement)

@@ -45,9 +45,13 @@ export async function getAccounts(pool: Pool): Promise<AccountSummary[]> {
   return rows;
 }
 
-/** The dataset's own "now" (D7): the latest `occurred_at` across every event, as UTC text. */
-export async function getAsOf(pool: Pool): Promise<string> {
-  const { rows } = await pool.query<{ asOf: string }>(
+/**
+ * The dataset's own "now" (D7): the latest `occurred_at` across every event, as UTC text.
+ * `null` when `activity_events` is empty — `MAX()` over zero rows is `NULL`, not an error, and
+ * an unseeded database (`db:migrate up` with no `db:seed`) is exactly that case (R1 #9).
+ */
+export async function getAsOf(pool: Pool): Promise<string | null> {
+  const { rows } = await pool.query<{ asOf: string | null }>(
     `SELECT MAX(occurred_at)::text AS "asOf" FROM activity_events`,
   );
   // An aggregate with no GROUP BY always returns exactly one row.

@@ -15,7 +15,7 @@ export function LocationsSection({
 
   return (
     <div className="locations">
-      {flagged.length > 0 ? (
+      {flagged.length > 0 && (
         <ul>
           {flagged.map((flag) => (
             <li key={flag.location}>
@@ -31,7 +31,12 @@ export function LocationsSection({
             </li>
           ))}
         </ul>
-      ) : (
+      )}
+
+      {/* Only when at least one location was actually verified quiet (R1 #1) — otherwise every
+          location is not-enough-history, and "nothing unusual at any of your 0 locations" was
+          reachable on 15 of the 25 weeks the week control offers, on every multi-site account. */}
+      {flagged.length === 0 && quietCount > 0 && (
         <p>
           <Emphasized parts={locationsQuietLine(quietCount, window.end)} />
         </p>

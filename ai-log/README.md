@@ -10,6 +10,7 @@ entry stays as it was.
 |---|---|
 | [`planning.md`](planning.md) | Reading the problem and building `PLAN.md`. Entries E1–E10. Planning closed 2026-09-17. |
 | [`implementation.md`](implementation.md) | Building it: task breakdown and code. Entries I1–. Started 2026-09-17. |
+| [`review.md`](review.md) | Reviewing the built code against `PLAN.md` and the two gate implementations. Entries R1–. Started 2026-09-18. |
 
 Later phases get their own file. Entry format is the same in all of them.
 

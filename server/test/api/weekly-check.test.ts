@@ -63,13 +63,23 @@ describe('GET /api/weekly-check — the four verdict states', () => {
     expect(body.verdict).not.toHaveProperty('changePct');
   });
 
-  it('not_enough_history — account 20, no error', async () => {
+  it('not_enough_history — account 20 (zero events ever) — the short form, no error', async () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/weekly-check?account=20&type=call_received&week=2026-07-20',
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().verdict).toEqual({ state: 'not_enough_history' });
+  });
+
+  it('not_enough_history — account 1 at the earliest evaluable week — the full sentence, with real weeksHave/weeksNeeded (R1 #3)', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/weekly-check?account=1&type=call_received&week=2026-02-02',
+    });
+    expect(response.statusCode).toBe(200);
+    // evalIndex 0 (the very first evaluable week) -> weeksHave = 0 + 1.
+    expect(response.json().verdict).toEqual({ state: 'not_enough_history', weeksHave: 1, weeksNeeded: 13 });
   });
 });
 

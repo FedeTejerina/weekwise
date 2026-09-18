@@ -19,9 +19,11 @@ export function VerdictSection({
     weekStart: week.start,
     weekEnd: week.end,
     eventType,
-    // T7's real response never carries weeksHave/weeksNeeded for this state (log I3: the seed
-    // can't produce it for anything the app actually queries) — wording.ts's short form
-    // handles that, rather than this component fabricating numbers to fill the gap.
+    // Present only for not_enough_history, and only when the account has some history at all
+    // (R1 #3) — undefined otherwise, which is exactly when wording.ts's short form applies
+    // (an account with zero events ever, e.g. account 20).
+    weeksHave: verdict.weeksHave,
+    weeksNeeded: verdict.weeksNeeded,
   });
 
   return (
