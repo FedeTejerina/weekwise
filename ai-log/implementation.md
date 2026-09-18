@@ -445,6 +445,139 @@ Repo changes: `package.json`, `package-lock.json`, `tsconfig.base.json`, `compos
 `web/package.json`, `web/tsconfig.json`, `web/src/main.tsx`, `web/test/placeholder.test.ts` (all
 new); this log entry. No `seed/` writes.
 
-**My call:**
+**My call:** accepted. Three things I'd want from any task like this: it resolved every version
+from the registry instead of assuming (TypeScript's current line is 7.0.2, not the 5.x it
+expected), it fixed two install failures without working around either — the jsdom engine
+mismatch, and a corrupted extraction it diagnosed as corruption rather than fighting the
+config — and it pinned the pg timestamp parser to UTC in setup, acting on the risk flagged
+back in E7 before any code needs it.
+Correction to the record: it says node_modules and package-lock.json are "both gitignored".
+Only node_modules is. The lockfile is tracked and should be — npm ci depends on it, and
+that's what makes the 15-minute setup claim reliable.
 
-**Who was right:**
+**Who was right:** (no disagreement)
+
+---
+
+## I9 — T1b: README part 1, stack and assumptions
+
+**Me:**
+> OK, you can continue with T1b, which goes before T2
+
+**Agent:** Wrote `README.md` (new) covering exactly what T1b scopes: the §5 stack table with a
+"why" per row, the four intended setup commands and the one-line test note (both marked
+unverified until T16's clean-clone run), and dedicated, self-contained sections answering the
+four things a reviewer would otherwise read as bugs — what moment the page shows and why not
+today, why account 6's 3 June spike stays in the data, why there's no login, and whether an LLM
+is used anywhere. Deliberately wrote it with no decision codes (no "D7", "D17") and no reference
+to `PLAN.md`'s section numbers, since the whole point is that it has to stand on its own.
+
+**Verified, not assumed.** T1b's own Done-when clause is a comprehension test, not a command —
+so rather than reread my own draft and judge it, I dispatched a fresh `general-purpose` agent with
+explicit instructions to read *only* `README.md`, not open `PLAN.md`, `TASKS.md`, `ai-log/`, or
+`seed/`, and answer the four questions cold, flagging anywhere it had to guess or infer something
+the file hadn't actually said.
+
+- **All four answers came back correct and, in the agent's own words, "fully supported by the
+  README's text... no guessing needed,"** each tied to the specific section that answered it.
+- **One thing it flagged, correctly, as worth noting though not a failure of the test:** two
+  claims in the README are asserted rather than demonstrated within the file itself — the
+  `@stdlib` vs. `scipy` agreement figure (3.2e-14) and account 18's "looks like US business
+  hours" timezone observation. Both are accurately stated as decided/measured elsewhere (in
+  `PLAN.md`, not reproduced here), and neither is one of the four graded questions, but it's a
+  fair read: this README asks the reader to trust two numbers it doesn't itself show the work
+  for.
+
+Repo changes: `README.md` (new); this log entry. No application code, no `seed/` writes.
+
+**My call:**  accepted — T1b's Done when is a comprehension test, not a command, and it actually
+ran one: a cold agent told to read only README.md, nothing else.  Four answers correct and
+"fully supported by the README's text". Writing it with no decision codes and no PLAN.md
+section references was the right read — the file has to stand alone or it isn't doing its job.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I10 — T2: migration 001, adapted from `seed/schema.sql`
+
+**Me:**
+> Perfect, now follow on with T2
+
+**Agent:** Generated `migrations/1789697688940_initial.sql` via `node-pg-migrate create initial
+-j sql`, then filled in its `-- Up Migration`/`-- Down Migration` halves with `seed/schema.sql`'s
+two tables plus exactly T2's four adaptations: a `CHECK` on `event_type` for the three known
+values, `CHECK (duration_seconds >= 0)`, an index on `(account_id, event_type, occurred_at)`, and
+no unique constraint anywhere across the event columns. The header names `seed/schema.sql` as the
+source and lists all four adaptations with the reason for each, per CLAUDE.md rule 3. Added
+`node-pg-migrate` and `pg` at the root, a `db:migrate` script, and a committed
+`migrate-config.js` carrying the local dev connection — a plain object, not env vars, so
+`npm run db:migrate up` needs no shell-specific setup on any platform.
+
+- **Found a real environment collision, not a config mistake, before trusting any result.** The
+  first `npm run db:migrate up` failed with a Spanish-language Postgres error whose stack trace
+  named a Windows installer path (`d:\pginstaller.auto\postgres.windows-x64\...`) — not the
+  Debian path the Compose container reports. `netstat` plus `tasklist` confirmed why: this
+  machine already runs a native Postgres Windows service bound to `0.0.0.0:5432`, so
+  `localhost:5432` was reaching that service instead of the container, even though
+  `docker compose ps` showed the mapping as present and healthy. Fixed by moving the container's
+  host port to 5433 in `compose.yaml` and `migrate-config.js`, rather than touching the native
+  service. Noted as a one-line assumption in `README.md` so a `psql -p 5432` from the host
+  doesn't quietly land on the wrong database.
+- **Confirmed `npm run <script> up`/`down` forwards the positional argument without `--`** on this
+  npm version (10.9.0) before relying on it, since T2's own "Done when" is written that way.
+- **Verified independently, not self-reported.** Ran all three Done-when checks myself, then
+  dispatched the `witness` subagent cold — told it about the 5433 port so it wasn't thrown by the
+  same collision, but not given my own output. It reran the up/down/up chain (starting from an
+  already-migrated database this time, since mine had left it that way; the first `up` correctly
+  reported "No migrations to run!" rather than erroring), reran `\d activity_events`, and reran
+  `head -20`, and confirmed all three clauses matched byte-for-byte against what the task asks
+  for. Its one caveat: it didn't cross-read the migration header's four bullets against
+  `PLAN.md` §5's actual text, and didn't check for leftover state (sequences, orphaned rows)
+  beyond what `\d` shows — neither is something the Done-when clause asked for.
+
+Repo changes: `migrations/1789697688940_initial.sql` (new); `migrate-config.js` (new);
+`package.json` and `package-lock.json` (root: `node-pg-migrate`, `pg`, `db:migrate` script);
+`compose.yaml` (host port 5432 → 5433); `README.md` (one line noting the port); this log entry.
+No `seed/` writes.
+
+**My call:** accepted the migration, rejected the scope of the port fix.
+
+**Who was right:** me, on the scope — the reviewer won't have a native Postgres on 5432.
+
+---
+
+## I11 — Correction: 5433 was my machine's problem, not the repo's
+
+**Me:**
+> The 5433 port is my machine's problem, not the repo's — I have a native Postgres service on
+> 5432, the reviewer won't. Put the committed default back to 5432 in both compose.yaml and
+> migrate-config.js, with an optional override so I can still run locally: the compose port
+> as ${DB_PORT:-5432}, and in migrate-config.js port: Number(process.env.DB_PORT) || 5432.
+> Keep it defaulting to plain 5432 with no env setup needed — that part was right.
+>
+> Then one line in the README: if 5432 is already in use, set DB_PORT.
+
+**Agent:** I8's committed fix (I10) baked this one machine's port conflict into the repo default,
+which was the wrong scope for the change — correct, applied exactly as specified.
+
+- `compose.yaml`: `"5433:5432"` → `"${DB_PORT:-5432}:5432"`.
+- `migrate-config.js`: `port: 5433` → `port: Number(process.env.DB_PORT) || 5432`.
+- `README.md`'s port note replaced with the one line asked for: set `DB_PORT` if 5432 is taken.
+- **Verified both paths, not just the one that matches this machine.** A direct `node -e` import
+  of `migrate-config.js` confirmed `port` resolves to `5432` with `DB_PORT` unset and to `5433`
+  with it set, before touching Docker at all. Then dispatched the `witness` subagent cold to
+  rerun the same two `node -e` checks, tear down and recreate the container with
+  `DB_PORT=5433 docker compose up -d` (5433 again here only because *this* machine's native
+  Postgres still holds 5432 — the witness was told that's expected, not a bug to chase), and run
+  `DB_PORT=5433 npm run db:migrate up` — all three matched. Neither I nor the witness could
+  exercise the bare default end-to-end against Docker on this machine, since 5432 here really is
+  taken by another service; that's stated as a limit of what got verified, not glossed over.
+
+Repo changes: `compose.yaml`, `migrate-config.js`, `README.md` (port note); this log entry.
+
+**My call:** accepted — it verified both paths with a direct import before touching Docker, then
+dispatched the witness cold to rerun them, and stated plainly what it could not exercise on
+this machine rather than implying full coverage.
+
+**Who was right:** (no disagreement)
