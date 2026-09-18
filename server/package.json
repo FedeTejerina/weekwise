@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@stdlib/stats-base-dists-negative-binomial-cdf": "0.2.3",
+    "fastify": "5.12.5",
     "pg": "8.23.0"
   },
   "devDependencies": {

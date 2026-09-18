@@ -3,9 +3,11 @@ import {
   getAccounts,
   getAccountWeekRanges,
   getAsOf,
+  getInProgressCounts,
   getWeeklyLocationCounts,
   type AccountSummary,
   type AccountWeekRange,
+  type InProgressCounts,
   type WeeklyLocationCounts,
 } from './db/aggregation.js';
 import { evaluateWindow, usualRange, type GateResult, type GateState } from './gate.js';
@@ -54,9 +56,18 @@ export interface LocationsResponse {
   quietCount: number;
 }
 
+export interface InProgress {
+  weekStart: string;
+  daysIn: number;
+  count: number;
+}
+
 export interface WeeklyCheckResponse {
   asOf: string;
   week: { start: string; end: string; isLatest: boolean };
+  /** D18: the still-elapsing current week, as a plain fact — never compared, never baselined,
+   * never part of a window. `null` only when the as-of moment falls exactly on a week boundary. */
+  inProgress: InProgress | null;
   weeks: string[];
   account: { id: number; name: string; locationCount: number };
   verdict: VerdictResponse;
@@ -110,6 +121,24 @@ function changePctFor(count: number, typical: number): number {
 }
 
 /**
+ * Pure: the account verdict, from the gate's own result alone — no dependency on `inProgress`
+ * or anything else, which is exactly what T9's deep-equal test checks by calling this same
+ * function against a run where `inProgress` was never computed at all.
+ */
+export function buildVerdict(accountResult: GateResult): VerdictResponse {
+  const verdict: VerdictResponse = { state: accountResult.state };
+  if (accountResult.state !== 'not_enough_history') {
+    verdict.count = accountResult.count!;
+    verdict.typical = Math.round(accountResult.typical! * 10) / 10;
+    verdict.usualRange = usualRange(accountResult.typical!, ACCOUNT_WINDOW_WEEKS, ACCOUNT_K);
+    if (accountResult.state === 'flagged_up' || accountResult.state === 'flagged_down') {
+      verdict.changePct = changePctFor(accountResult.count!, accountResult.typical!);
+    }
+  }
+  return verdict;
+}
+
+/**
  * Everything `evaluateAccountWeek` needs from the database, fetched once. Separated out so a
  * caller evaluating many (account, type, week) combinations — T15's regression anchor, chiefly
  * — pays for the round trip once instead of once per combination, while still going through
@@ -121,19 +150,47 @@ export interface WeeklyCheckData {
   accounts: AccountSummary[];
   ranges: AccountWeekRange[];
   allLocationRows: WeeklyLocationCounts[];
+  inProgressRows: InProgressCounts[];
 }
 
 export async function fetchWeeklyCheckData(pool: Pool): Promise<WeeklyCheckData> {
-  const [asOfText, accounts, ranges, allLocationRows] = await Promise.all([
+  const [asOfText, accounts, ranges, allLocationRows, inProgressRows] = await Promise.all([
     getAsOf(pool),
     getAccounts(pool),
     getAccountWeekRanges(pool),
     getWeeklyLocationCounts(pool),
+    getInProgressCounts(pool),
   ]);
   // getAsOf's `::text` cast avoids pg's Date parsing but leaves a space, not the `T`/`Z` PLAN.md
   // §6 publishes; occurred_at is already UTC, so this is textual reformatting, not a conversion.
   const asOf = `${asOfText.replace(' ', 'T')}Z`;
-  return { asOf, accounts, ranges, allLocationRows };
+  return { asOf, accounts, ranges, allLocationRows, inProgressRows };
+}
+
+/** Every distinct location `getWeeklyLocationCounts` ever recorded for this account, sorted.
+ * Shared by `evaluateAccountWeekFromData` and the `/api/accounts` handler so "how many
+ * locations does this account have" is computed in exactly one place. */
+export function locationNamesFor(data: WeeklyCheckData, accountId: number): string[] {
+  return [...new Set(data.allLocationRows.filter((r) => r.accountId === accountId).map((r) => r.location))].sort();
+}
+
+/**
+ * D18, computed independently of `evaluateAccountWeekFromData`: it reads from a completely
+ * separate query (`getInProgressCounts`) that never enters any account or location series, any
+ * baseline, or any window — a test asserts the account verdict is unchanged whether this is
+ * called or not (T9).
+ */
+export function inProgressFor(
+  data: WeeklyCheckData,
+  accountId: number,
+  eventType: EventType,
+): InProgress | null {
+  const column = COLUMN_BY_EVENT_TYPE[eventType];
+  const row = data.inProgressRows.find((r) => r.accountId === accountId);
+  if (!row || row.isBoundary) {
+    return null;
+  }
+  return { weekStart: row.weekStart, daysIn: row.daysIn, count: row[column] };
 }
 
 export function evaluateAccountWeekFromData(
@@ -158,7 +215,7 @@ export function evaluateAccountWeekFromData(
   }
 
   const locationRows = allLocationRows.filter((r) => r.accountId === accountId);
-  const locationNames = [...new Set(locationRows.map((r) => r.location))].sort();
+  const locationNames = locationNamesFor(data, accountId);
   const locationCount = locationNames.length;
 
   const seriesFor = (location: string | null): number[] =>
@@ -199,39 +256,21 @@ export function evaluateAccountWeekFromData(
   };
 }
 
-/** Convenience for a single lookup — fetches, then evaluates. `weeklyCheck()` uses this. */
-export async function evaluateAccountWeek(
-  pool: Pool,
-  accountId: number,
-  eventType: EventType,
-  weekStart: string,
-): Promise<AccountWeekEvaluation> {
-  const data = await fetchWeeklyCheckData(pool);
-  return evaluateAccountWeekFromData(data, accountId, eventType, weekStart);
-}
-
 export async function weeklyCheck(
   pool: Pool,
   accountId: number,
   eventType: EventType,
   weekStart: string,
 ): Promise<WeeklyCheckResponse> {
-  const evaluation = await evaluateAccountWeek(pool, accountId, eventType, weekStart);
-  const { accountResult, locationCount } = evaluation;
-
-  const verdict: VerdictResponse = { state: accountResult.state };
-  if (accountResult.state !== 'not_enough_history') {
-    verdict.count = accountResult.count!;
-    verdict.typical = Math.round(accountResult.typical! * 10) / 10;
-    verdict.usualRange = usualRange(accountResult.typical!, ACCOUNT_WINDOW_WEEKS, ACCOUNT_K);
-    if (accountResult.state === 'flagged_up' || accountResult.state === 'flagged_down') {
-      verdict.changePct = changePctFor(accountResult.count!, accountResult.typical!);
-    }
-  }
+  const data = await fetchWeeklyCheckData(pool);
+  const evaluation = evaluateAccountWeekFromData(data, accountId, eventType, weekStart);
+  const { locationCount } = evaluation;
+  const verdict = buildVerdict(evaluation.accountResult);
 
   const response: WeeklyCheckResponse = {
     asOf: evaluation.asOf,
     week: { start: weekStart, end: addDays(weekStart, 6), isLatest: evaluation.isLatest },
+    inProgress: inProgressFor(data, accountId, eventType),
     weeks: evaluation.weeks,
     account: { ...evaluation.account, locationCount },
     verdict,

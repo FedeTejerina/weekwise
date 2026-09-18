@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "db:migrate": "node-pg-migrate -f migrate-config.js -m migrations -j sql",
     "db:seed": "tsx scripts/seed.ts",
-    "db:setup": "npm run db:migrate up && npm run db:seed"
+    "db:setup": "npm run db:migrate up && npm run db:seed",
+    "dev:api": "tsx server/src/server.ts"
   },
   "devDependencies": {
     "node-pg-migrate": "9.0.0",

@@ -1207,3 +1207,157 @@ Repo changes: `server/src/weeklyCheck.ts` (split into `fetchWeeklyCheckData` +
 
 **Who was right:** the witness — it flagged an exclusion the anchor's wording never asked for, and
 removing it proved the exclusion had been a no-op rather than masking anything.
+
+---
+
+## I24 — T9: the in-progress week line (D18), end to end
+
+**Me:**
+> Now T8, T9 and T10 in one round, all three depend only on T7, and after T15 a downstream
+> failure is loud rather than silent, so I don't need them one at a time.
+>
+> Keep the task boundaries: don't let work bleed between them just because they're batched.
+> Dispatch the witness once with all three Done-whens.
+>
+> Stop if any of them needs something its own task doesn't cover.
+
+**Agent:** Implemented first, since T10's own spec says it includes the in-progress sentence
+"if T9 ships." Nothing here needed anything outside T9's own scope.
+
+- **`getInProgressCounts`** (new, `aggregation.ts`): per account, in that account's own
+  timezone, the selected event type's deduplicated count from the start of the *current* local
+  week (the week right after `defaultWeek`) through the as-of moment — plus `daysIn` and an
+  `isBoundary` flag for D18's one edge case (as-of falling exactly on a week's Monday-00:00,
+  where there is no in-progress week to report at all).
+- **Matched all seven named counts exactly on the first real run**, before it was even wired
+  into `weeklyCheck()`: account 6 → 7, account 5 → 6, account 12 → 6, account 1 → 3, accounts
+  2/8/20 → 0, every one at `weekStart: "2026-07-27"`, `daysIn: 1` — reproducing PLAN.md §12's
+  own D18 figures independently, the same way T5b's harness independently reproduced §4's.
+- **Wired in without touching the verdict path, structurally, not just by convention:**
+  `inProgress` is read from `getInProgressCounts`'s own rows — a query that never joins into the
+  account/location week series, the baseline, or any window. Extracted `buildVerdict` (pure,
+  takes only a `GateResult`) out of `weeklyCheck()` specifically so the deep-equal test could
+  call it against two independently-evaluated results — one from real data, one from a copy
+  with `inProgressRows` stubbed to `[]` — rather than comparing something to itself.
+- **Removed dead code found along the way:** the `evaluateAccountWeek` convenience wrapper
+  (fetch + evaluate in one call) that T7/T15 had used became unreferenced once `weeklyCheck()`
+  started fetching data directly to also build `inProgress` from it. Deleted rather than left
+  as an unused export.
+- **Full T7 regression re-run after every change** (all seven original cases, byte-identical)
+  before calling any of this done, since `weeklyCheck.ts` is now touched by three tasks in one
+  sitting and T7's own numbers are the thing everything downstream trusts.
+
+Repo changes: `server/src/db/aggregation.ts` (`getInProgressCounts`, `InProgressCounts`);
+`server/src/weeklyCheck.ts` (`inProgress` field, `inProgressFor`, `buildVerdict` extracted,
+`evaluateAccountWeek` removed); `server/test/sql/in-progress.test.ts` (new); this log entry.
+
+**My call:** accepted — it extracted buildVerdict so the deep-equal test compares two independently
+evaluated results rather than something against itself, and deleted the wrapper that fell dead
+instead of leaving it exported.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I25 — T10: the wording layer, the §7 template
+
+**Me:** (same message as I24 — T8, T9, T10 batched in one round)
+
+**Agent:** Re-read `PLAN.md` §7 fresh before writing anything, rather than from memory — the
+exact `**bold**` spans matter for a "verbatim" Done-when, and two of my own recollections
+turned out wrong once checked: the not-enough-history sentence has **no** bold at all, and
+neither does the locations-quiet line. Only the four flagged/quiet account sentences and the
+one location example actually carry emphasis.
+
+- **`server/src/wording.ts`**: a tiny `PartsBuilder` (`.plain()`/`.bold()`/`.build()`) that
+  tracks each emphasized span's character range *as it's appended*, so no boundary is ever
+  computed by hand against a finished string — exactly the kind of arithmetic that produced
+  §4's own off-by-one (log I7). Built every sentence function on top of it.
+- **The size rule, date formatting, and return shape, each checked against a real example
+  before trusting the general formula:** ratio ≥ 2 → rounded multiple; below that → rounded
+  percentage, signed by direction; count 0 → its own line, no percentage regardless of how far
+  `typical` is from zero. Date ranges: en dash, same-month collapses to one month name,
+  cross-month names both (account 12's "29 June – 5 July" case exercises this directly). Also
+  implemented and tested the Wednesday illustration from §7's own prose ("3 days in (Mon–Wed 29
+  July)") even though the seed never produces it — PLAN.md gave it as a worked example, so it's
+  a real, checkable case, not an invented one.
+- **All six account states plus the location-flagged sentence, the locations-quiet line, and
+  both in-progress lines reproduced verbatim on the first real run** — `text` character-for-
+  character equal to PLAN.md §7 with its `**` markers stripped, `emphasis` recovering exactly
+  the bolded spans, for every example T10 names (accounts 1, 6, 7, 12, 15, and the Site N
+  4-week case).
+- **Two wording choices made without a verbatim example to match, flagged rather than presented
+  as reproductions:** PLAN.md's not-enough-history sentence takes `weeksHave`/`weeksNeeded` as
+  plain caller-supplied numbers, not something derived from a real `weeklyCheck()` call — the
+  seed can't produce this state at all (log I3), so there's nothing real to derive them from,
+  and T10's own spec says this comes from "the constructed fixture T5 builds." And the
+  location list-by-name line has no verbatim text in `PLAN.md` at all (it only says "listed by
+  name"), so its exact phrasing ("Not enough history yet for Site A and Site B.") is this
+  task's own construction, tested for correct English list-joining (one, two, and three-plus
+  names) but not verified against any plan text, because none exists.
+- **`explain(verdict, facts) -> string` (§8's seam):** built on the exact same `verdictSentence`
+  Parts function, flattened to a markdown string (`**bold**` reinserted from the emphasis
+  ranges) rather than reimplemented — the droppable seam and the template T12 will actually
+  render both trace to one function, so they can't independently drift.
+
+Repo changes: `server/src/wording.ts`, `server/test/unit/wording.test.ts` (new); this log entry.
+
+**My call:** accepted — it reread §7 instead of trusting memory and caught two of its own wrong
+recollections, and the builder tracks emphasis ranges as it appends so no boundary is ever
+computed by hand against a finished string.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I26 — T8: the Fastify API
+
+**Me:** (same message as I24/I25 — T8, T9, T10 batched in one round)
+
+**Agent:** Last of the three, since it's the thinnest layer — wiring, not new logic. Nothing
+here needed anything outside T8's own scope either.
+
+- **`server/src/api.ts`**: `GET /api/accounts`, `GET /api/weekly-check`, both calling straight
+  into `weeklyCheck.ts`. D15's fallback rule shaped one deliberate choice: the querystring is
+  left un-schema'd on purpose — a strict integer/enum schema would make Fastify itself reject
+  `?account=999&type=nonsense` with a 400 before the handler ever ran, which is exactly what
+  D15 rules out. Validation and fallback happen entirely in the handler instead.
+- **`server/src/server.ts`** plus a root `dev:api` script — deliberately not named `dev`, since
+  `README.md` already documents `npm run dev` as the future command that starts *both* the API
+  and the web UI (T11), and neither exists yet as a working pair; claiming that name now would
+  make the README's own promise false a task early.
+- **A small duplication caught and fixed before calling this done, not after:** `/api/accounts`
+  had its own inline `new Set(...).size` for a location count — the same computation
+  `evaluateAccountWeekFromData` already does. Extracted `locationNamesFor` into `weeklyCheck.ts`
+  so both call sites compute "how many locations does this account have" in exactly one place —
+  a small instance of the same drift CLAUDE.md rule 4 was written for, caught by inspection
+  before the witness ever ran, not by it.
+- **The running-server curl check surfaced a real environment mess, cleaned up rather than
+  routed around:** two earlier attempts to background the server (this session, while getting
+  the `Bash` tool's background-output plumbing right) left orphaned `node` processes holding
+  port 3000 — `netstat`/`tasklist` found them, `taskkill` cleared them, each time confirmed by
+  re-checking the port was free before trying again. The actual curl against a clean server
+  start returned the flagged-up body exactly (`state: "flagged_up"`, `count: 528`).
+- **Verified independently, once, across all three tasks together** — the batching the user
+  asked for. Dispatched the `witness` subagent cold with all three Done-whens in one prompt:
+  it ran the real `npm test -- api`, the real curl against a server it started and stopped
+  itself, reread `in-progress.test.ts`'s deep-equal assertion to confirm it compares two
+  independently-built verdicts rather than one compared to itself, and reread
+  `wording.test.ts` next to a fresh reading of `PLAN.md` §7 to confirm the account-6 and
+  account-15 sentences match verbatim once `**` is stripped. Everything matched; no gaps
+  reported this time.
+- **No blockers hit.** Each task's own scope covered everything it needed; nothing required
+  reaching into another task's territory beyond the couplings the tasks themselves declare
+  (T10's in-progress line depending on T9 having shipped, which it did).
+
+Repo changes: `server/src/api.ts`, `server/src/server.ts` (new); `server/src/weeklyCheck.ts`
+(`locationNamesFor` extracted); `server/test/api/weekly-check.test.ts` (new); `package.json`
+(root `dev:api` script); `server/package.json` and `package-lock.json` (`fastify`);
+`vitest.config.ts` (`api` project given its own `globalSetup`, matching `sql`'s, so `npm test
+-- api` runs standalone); this log entry.
+
+**My call:** accepted — it left the querystring un-schema'd on purpose because a strict schema
+would make Fastify reject before the handler runs, which is exactly what D15's fallback rule
+forbids.
+
+**Who was right:** (no disagreement)

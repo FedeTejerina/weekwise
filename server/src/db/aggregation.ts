@@ -23,6 +23,20 @@ export interface WeeklyLocationCounts {
   appointments: number;
 }
 
+export interface InProgressCounts {
+  accountId: number;
+  /** The local Monday of the account's current, still-elapsing week. */
+  weekStart: string;
+  /** Day number within that week: 1 on Monday. */
+  daysIn: number;
+  /** True only when the as-of moment falls exactly on the week's Monday-00:00 boundary (D18) —
+   * zero time has elapsed, so there is no in-progress week to report. */
+  isBoundary: boolean;
+  calls: number;
+  leads: number;
+  appointments: number;
+}
+
 /** Every account, id order — the accounts table itself, nothing derived. */
 export async function getAccounts(pool: Pool): Promise<AccountSummary[]> {
   const { rows } = await pool.query<AccountSummary>(
@@ -133,6 +147,58 @@ export async function getWeeklyLocationCounts(pool: Pool): Promise<WeeklyLocatio
       ON b.account_id = l.account_id AND b.location = l.location AND b.week_start = w.week_start
     GROUP BY l.account_id, l.location, w.week_start
     ORDER BY l.account_id, l.location, w.week_start;
+  `);
+  return rows;
+}
+
+/**
+ * The in-progress week (D18): per account, the selected-event-type counts from the start of
+ * the account's current local week through the as-of moment, deduplicated like everything
+ * else. Never baselined, never zero-filled against a series — this is a plain fact about
+ * "right now", not a comparison.
+ */
+export async function getInProgressCounts(pool: Pool): Promise<InProgressCounts[]> {
+  const { rows } = await pool.query<InProgressCounts>(`
+    WITH dedup AS (
+      SELECT DISTINCT account_id, location, event_type, occurred_at, duration_seconds, outcome
+      FROM activity_events
+    ),
+    bounds AS (
+      SELECT MAX(occurred_at) AS max_at FROM activity_events
+    ),
+    account_now AS (
+      SELECT
+        a.id AS account_id,
+        (b.max_at AT TIME ZONE 'UTC' AT TIME ZONE a.timezone) AS local_now,
+        date_trunc('week', b.max_at AT TIME ZONE 'UTC' AT TIME ZONE a.timezone) AS week_start
+      FROM accounts a CROSS JOIN bounds b
+    ),
+    bucketed AS (
+      SELECT
+        d.account_id,
+        d.event_type,
+        (d.occurred_at AT TIME ZONE 'UTC' AT TIME ZONE a.timezone) AS local_ts
+      FROM dedup d
+      JOIN accounts a ON a.id = d.account_id
+    )
+    SELECT
+      an.account_id AS "accountId",
+      an.week_start::date::text AS "weekStart",
+      ((an.local_now::date - an.week_start::date) + 1)::int AS "daysIn",
+      (an.local_now = an.week_start) AS "isBoundary",
+      COUNT(*) FILTER (
+        WHERE b.event_type = 'call_received' AND b.local_ts >= an.week_start AND b.local_ts <= an.local_now
+      )::int AS calls,
+      COUNT(*) FILTER (
+        WHERE b.event_type = 'lead_created' AND b.local_ts >= an.week_start AND b.local_ts <= an.local_now
+      )::int AS leads,
+      COUNT(*) FILTER (
+        WHERE b.event_type = 'appointment_set' AND b.local_ts >= an.week_start AND b.local_ts <= an.local_now
+      )::int AS appointments
+    FROM account_now an
+    LEFT JOIN bucketed b ON b.account_id = an.account_id
+    GROUP BY an.account_id, an.week_start, an.local_now
+    ORDER BY an.account_id;
   `);
   return rows;
 }

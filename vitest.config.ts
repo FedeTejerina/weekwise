@@ -40,6 +40,12 @@ export default defineConfig({
           environment: 'node',
           env: { TZ },
           setupFiles: ['./test/setup/pg-timestamp-parser.ts'],
+          // Same global setup as `sql` — it's generic (container, migrate, seed, set
+          // TEST_DATABASE_URL), so `npm test -- api` works standalone rather than depending on
+          // the `sql` project having already run. Running the full `npm test` spins up two
+          // separate ephemeral containers, one per project; that's isolation, not a bug.
+          globalSetup: ['./test/sql/global-setup.ts'],
+          hookTimeout: 120_000,
         },
       },
       {
