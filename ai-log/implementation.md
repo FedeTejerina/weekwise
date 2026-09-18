@@ -1985,3 +1985,25 @@ Repo changes: `README.md` (one bullet in `With another day`); this log entry. No
 **My call:** accepted — deferred-tooling framing held, exclusions stated, no tool invented where none exists.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I37 — README: stale polish bullet corrected after I33
+
+**Me:**
+> README-only, no code. The "No visual polish pass" bullet in `## With another day` is stale
+> after I33 — rewrite it to what is true now (restrained quality-floor pass, still no design
+> overhaul). This closes the open flag from I34.
+
+**Agent:** One-line README-only fix, no code. The `With another day` bullet still read "No visual
+polish pass" after I33 had done exactly that pass — flagged but deliberately left untouched in
+I34 as out of scope at the time. Replaced with what is true now: a restrained quality-floor pass
+(spacing scale, visible focus, AA contrast, mobile layout, reduced motion), still no design
+overhaul per the brief. This closes I34's open flag
+rather than leaving a known contradiction for the reviewer to trip over.
+
+Repo changes: `README.md` (one bullet rewritten); this log entry.
+
+**My call:** accepted — one stale bullet rewritten to match I33, I34 flag closed.
+
+**Who was right:** (no disagreement)

@@ -207,8 +207,10 @@ documented flow:
   response — fine on a local database, not fine on a slow connection.
 - Real account scoping behind whatever auth a production deployment already has (D17 already
   names this as deliberately out of scope for the exercise, not forgotten here).
-- No visual polish pass. The CSS stays intentionally plain — per the brief, unstyled-but-clear
-  beats pretty-but-broken. T12's screenshots were verification evidence that every state renders correctly, not the quality bar.
+- A restrained quality-floor pass (spacing scale, visible focus, AA contrast, mobile layout,
+  reduced motion) — still no design overhaul, per the brief: unstyled-but-clear beats
+  pretty-but-broken. T12's screenshots were verification evidence that every state renders
+  correctly, not the quality bar.
 - Cache `fetchWeeklyCheckData`'s five queries instead of re-running the full aggregation on
   every single request; harmless on a 20-account seed, real cost on a live, larger dataset.
 - The week selector doesn't scale past this seed. `Controls.tsx` renders every evaluable week
