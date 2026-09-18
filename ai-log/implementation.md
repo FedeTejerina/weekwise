@@ -1718,3 +1718,239 @@ tree changed (`git status --porcelain` before starting showed nothing beyond the
 **My call:** accepted — timed from a clean clone to a rendered page, flagged the DB_PORT deviation, stated both warm-cache caveats honestly.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I33 — Wrap-up: CSS-only visual refinement
+
+**Me:**
+> Wrap-up, CSS only in web/src/style.css. No edits in server/, no changes to response shapes,
+> wording strings, or DOM structure/classes, visual refinement only.
+>
+> Apply a quality floor: consistent spacing scale, legible type hierarchy, readable contrast,
+> visible keyboard focus states, responsive down to mobile, and prefers-reduced-motion
+> respected. One restrained accent at most; no hero, no signature element, no new fonts unless
+> system stack.
+>
+> Done when: npm run typecheck clean, npm test -- web passes, and the five T12 states
+> re-screenshot identically in content (same text, same structure) with only styling changed.
+> Log as a wrap-up entry; note it touches nothing verified.
+
+**Agent:** Rewrote `web/src/style.css` only — read every component (`App.tsx`, `Controls.tsx`,
+`VerdictSection.tsx`, `Emphasized.tsx`, `LocationsSection.tsx`, `InProgressLine.tsx`) first to
+know the exact existing classes/elements (`.controls`, `.verdict`, `.locations`,
+`.not-enough-history`, `.in-progress`, `p[role="alert"]`) to target, so nothing needed adding or
+renaming.
+
+- **Spacing/type scale as CSS custom properties** (`--space-1`…`--space-7`, `--text-sm`…
+  `--text-xl`) applied consistently across `main`, the cards, and the controls, rather than
+  per-rule magic numbers.
+- **One accent** (`--color-accent`, a blue), used only for `:focus-visible` outlines — nowhere
+  else, per "one restrained accent at most."
+- **`:focus-visible` outlines added** on every focusable element (`select`, `a`, `button`,
+  `[tabindex]`) — there were none before. Verified visually: the witness's own screenshot pass
+  and a separate Tab-key check both show a clear outline ring.
+- **`p[role="alert"]` given actual styling** (border, background, readable text color) — it was
+  completely unstyled before, i.e. plain black text with no visual distinction from the rest of
+  the page.
+- **A `@media (max-width: 480px)` block** — tighter padding, controls stack full-width. Verified
+  no horizontal scroll at 375px width via `document.documentElement.scrollWidth >
+  clientWidth` (`false`).
+- **`@media (prefers-reduced-motion: no-preference)`** gates the one transition added (focus/hover
+  border-color) — under reduced motion, no transition rule applies at all, rather than adding a
+  motion effect and then trying to cancel it.
+- **Dark-mode variant** via `@media (prefers-color-scheme: dark)` — not asked for explicitly, but
+  "readable contrast" as a stated quality-floor bullet reads as covering whichever scheme the
+  browser reports, not just light mode; redefines the same custom properties, no separate rule
+  set to maintain.
+- **Caught and fixed my own contrast miss before calling this done:** the first pass picked
+  `--color-text-subtle: #78787f` for `.not-enough-history` text. Computed its WCAG contrast ratio
+  by hand (relative luminance, not eyeballed) against the white card background: **4.38:1**,
+  below the 4.5:1 AA floor for normal-size text — close enough to look fine and still fail the
+  stated bar. Darkened to `#707078` (**4.91:1**), and adjusted the dark-mode counterpart
+  (`#86868f` → `#94949c`, **5.52:1** against the dark card) for the same margin rather than
+  leaving it exactly at the light-mode fix's original ratio.
+- **Verified the "identical content/structure" clause with a real diff, not eyeballing
+  screenshots.** Wrote a Playwright script that visits the five T12 URLs, captures both
+  `main.innerText` and a full tag+class structural walk of every element under `main`, ran it
+  once before editing `style.css` and once after (twice, actually — the contrast fix meant a
+  second "after" pass), and diffed the two JSON captures programmatically. All five: text MATCH,
+  structure MATCH.
+- **Then ran `npm run typecheck` and `npm test -- web` myself** — both clean — before dispatching
+  the witness.
+
+**Verified independently.** Dispatched the `witness` subagent cold with all four checks (the two
+Done-when commands, a `git status`/`git diff --stat` scope check, and its own from-scratch
+Playwright pass against the five T12 URLs). It confirmed typecheck clean, 9/9 web tests passing,
+and `git diff --stat` showing only `web/src/style.css` changed (184 insertions / 30 deletions).
+
+- **One mismatch it flagged — my dispatch instruction was wrong, not the CSS.** I told the
+  witness account 20 should show a `.locations` element; it does not, and the witness caught
+  this itself rather than taking my instruction as ground truth — it queried the live API
+  directly (`/api/weekly-check?account=20...`), found `locationCount: 0` and no `locations` key
+  in the response, cross-checked against account 19 (correctly `.locations`-absent, also
+  zero/single-location) and accounts 6/1/15 (correctly `.locations`-present, multi-location),
+  and concluded this is existing D16 API/data behavior — account 20 has zero locations, so it
+  never gets a `locations` payload, same rule that already excludes account 19. Not a scope
+  violation; a wrong expectation in what I asked it to check.
+- Screenshots from its own independent pass: all five "render cleanly: legible text, no
+  overlapping or clipped content, good contrast on all five."
+- **What it explicitly did not check**, stated rather than implied: line-by-line confirmation
+  that every rule inside the `style.css` diff is styling-only (it confirmed which *file* changed,
+  not that every line within it is non-structural); no URL/account beyond the five; no mobile
+  breakpoint or focus-state check beyond Playwright's default viewport; no browser console
+  check during navigation.
+
+**Touches nothing already verified.** No `server/` file changed; `WeeklyCheckResponse`'s shape,
+every wording string in `server/src/wording.ts`, and every class name and element type the React
+components render are all byte-identical to before this entry — confirmed by the structural diff
+above, not asserted. T5b/T15's gate anchor, the §7 sentences, and the API contract are all
+untouched by a CSS-only change by construction, and nothing here re-runs or revisits any of them.
+
+Repo changes: `web/src/style.css` (rewritten); this log entry. No `seed/` writes, no `server/`
+writes.
+
+**My call:** accepted — CSS-only scope held, contrast fixed by computed ratio, five states text- and structure-identical, witness confirmed clean.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I34 — README: week selector documented as a known scaling limitation
+
+**Me:**
+> README-only change, no code. Document the week selector as a known scaling limitation.
+>
+> Current state: Controls.tsx renders every evaluable week as a flat <select> — fine for the
+> frozen seed's 25 weeks, but unbounded as data grows (hundreds of options, undiscoverable, no
+> calendar context).
+>
+> Add it to the README's known-gaps/next-steps area: name the failure mode, then sketch the fix
+> I proposed — a week-scoped date picker (or month-grouped select with prev/next week
+> navigation) bound to Monday-start weeks in the account's timezone, defaulting to the latest
+> completed week per D7. Note the trade-off: slightly more UI work, but bounded and scannable at
+> any history length.
+
+**Agent:** Added one bullet to `## With another day`, not `## Known gaps, found in code
+review, left deliberately` — that section's own opening sentence scopes it explicitly to R1's
+findings ("A review pass ... found ten issues"), and this wasn't one of them; filing it there
+would misstate where it came from. `With another day` already holds exactly this shape of
+entry (current behavior stated as fine on the seed, named as a real cost at scale, e.g. the
+`fetchWeeklyCheckData` caching bullet immediately above it), so it was placed directly after
+that one and written in that section's unbolded style rather than the bolded lead-in the
+`Known gaps` bullets use.
+
+- **Failure mode named against the actual file**, not a generic "won't scale" line:
+  `Controls.tsx` renders every evaluable week as one flat `<select>`, fine at 25 options,
+  unbounded as an account accrues years of history — hundreds of options, no calendar context,
+  nothing to scan by month.
+- **Fix sketched exactly as given**, not embellished: a week-scoped date picker or a
+  month-grouped select with prev/next-week navigation, bound to Monday-start weeks in the
+  account's own timezone, defaulting to the latest completed week — referencing `D7` the way
+  the `With another day`/`Known gaps` sections already do elsewhere in this README (the
+  no-decision-codes rule was T1b's own scope, not this later section's).
+- **Trade-off stated as given:** more UI work than a flat `<select>`, against staying bounded
+  and scannable at any history length instead of growing with the data.
+- **Flagging, not fixing:** the bullet directly above the new one — "No visual polish pass...
+  T12's screenshots were verification evidence... not the quality bar" — is now stale; I33 did
+  exactly that visual pass. Left untouched since this turn's instruction was scoped to the week
+  selector only; noting it here rather than silently leaving a contradiction unremarked or
+  silently fixing something outside this turn's ask.
+
+Repo changes: `README.md` (one bullet added to `With another day`); this log entry. No code, no
+`seed/` writes.
+
+**My call:** accepted — scaling limit filed in the right section with its fix sketched and trade-off stated, stale polish bullet flagged not silently fixed.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I35 — Follow-up to I34: the week selector self-documents instead of just being documented
+
+**Me:**
+> Web-only, no behavior change. In Controls.tsx, keep every week selectable (server still
+> accepts them; URLs stay stable) but make non-evaluable weeks self-explanatory.
+>
+> Derive it client-side from the weeks array position, no server changes: the first 12 entries
+> can't carry an account verdict (D8 needs 12 baseline weeks + the judged week, so evalIndex <
+> 12). Render those options with a suffix like needs more history (or an optgroup with that
+> label), and add one hint line under the Week control: "Verdicts need 13 weeks of history;
+> earlier weeks show why."
+>
+> No changes under server/, no response-shape or URL changes, no filtering. Update
+> web/test/App.test.tsx for the labels, run npm run typecheck + npm test -- web, re-screenshot
+> the selector on an early week. Log as a follow-up to I34.
+
+**Agent:** Read `server/src/weeklyCheck.ts` before touching `Controls.tsx`, specifically to
+confirm what a week's array *position* actually means — `weekListFrom` builds `weeks` in
+ascending, oldest-first order (`earliestFullWeek` at index 0), and `evalIndex =
+weeks.indexOf(weekStart)` is exactly that array index. So `weeks[i]`'s own position *is* its
+`evalIndex`, with no reconstruction needed client-side.
+
+- **Found the existing `weeks` prop doc comment in `Controls.tsx` was backwards** — it said
+  "most recent first," but the real order (confirmed above) is oldest-first; the `.reverse()`
+  in the render is what flips it to newest-on-top for display. This is exactly the assumption
+  my new suffix logic depends on (`evalIndex < 12` computed *before* the reverse), so a reader
+  trusting the old comment would conclude the logic was backwards. Fixed the comment in the same
+  edit rather than leaving code and its own doc comment contradicting each other.
+- **`BASELINE_WEEKS` kept as a local literal (`= 12`) in `Controls.tsx`, not imported from
+  `server/src/gate.ts`** even though that constant already exists there and is already exported
+  and already imported by `weeklyCheck.ts`. `gate.ts` has a real runtime dependency
+  (`@stdlib/stats-base-dists-negative-binomial-cdf`) — importing it as a *value* (not
+  `import type`) would pull that whole stats library into the web bundle for the sake of the
+  number `12`. `VerdictSection.tsx`/`LocationsSection.tsx`'s existing cross-package imports from
+  `wording.ts` don't have this cost — `wording.ts` imports only `import type { EventType }`,
+  erased at compile time. Wrote the literal with a comment naming `D8`/`BASELINE_WEEKS`
+  explicitly so the duplication is visible and intentional, not silent.
+- **The suffix computed from position, applied after reverse:** `weeks.map((w, evalIndex) => ({
+  w, needsHistory: evalIndex < BASELINE_WEEKS })).reverse().map(...)` — attaching the flag while
+  the array is still in its original (position = evalIndex) order, then reversing the
+  *decorated* pairs for display, rather than trying to recompute the index from the reversed
+  array (`weeks.length - 1 - reversedIndex`), which would have been the same result but a more
+  error-prone way to get there.
+- **Hint line (`<span className="hint">`) placed inside the Week `<label>`, after the
+  `<select>`** — the label's own CSS (`.controls label { flex-direction: column }`, from I33)
+  already stacks children vertically, so no new layout rule was needed beyond a `.hint` text
+  style (small, muted, normal weight — the label around it is semibold, which would have read
+  as another heading rather than help text).
+- **No filtering, no server changes, no URL changes** — confirmed by construction: `weeks` is
+  rendered in full, exactly as received; `onChange`/`useUrlState` are untouched; nothing under
+  `server/` was opened for editing, only read.
+- **CSS adjusted so the longer option text doesn't break the controls row layout.** The Week
+  select's own width now follows its longest option's text ("needs more history" on early weeks
+  vs. a bare date on later ones), which made it wrap onto its own line inconsistently — only on
+  weeks with the long label — instead of sharing a row with Account/Activity every time. Gave
+  Week a permanent full-width row (`.controls label:last-child { flex: 1 1 100%; }`) and made
+  Account/Activity split that row evenly instead of sizing to their own content
+  (`.controls label:not(:last-child) { flex: 1 1 0; }`), so the layout is identical regardless
+  of which week is selected, and both rows' edges line up.
+
+**Verified.** `npm run typecheck` clean (both workspaces). Added one test to
+`web/test/App.test.tsx` (`describe('week selector: needs-more-history labels...')`, reusing
+account 1 / quiet / 2026-07-20's existing mock data and the file's own `FULL_WEEKS` fixture):
+asserts the exact accessible names of an early-suffixed option, a late-suffixed option, and the
+first two non-suffixed options at the `evalIndex 12` boundary (`2026-04-27`, `2026-07-20`) —
+`getByRole('option', { name })`'s default exact matching *is* the negative assertion for the
+suffix, not a separate check. `npm test -- web`: 2 files, **10/10** passing (was 9 before this
+entry).
+
+**Re-screenshotted on an early week**, against the real dev server (`DB_PORT=5433` on this
+machine, same as every prior task) rather than the jsdom test environment — `?account=1&type=
+call_received&week=2026-02-02` (`evalIndex` 0, the earliest evaluable week, itself in the
+not-enough-history state): the closed select reads "2026-02-02 — needs more history"; opening
+it shows the boundary directly — "2026-04-27" bare at the top of the suffixed run, every earlier
+week below it carrying the suffix, all 12 accounted for; a live count via the DOM confirmed
+exactly **12** suffixed options out of 25. The hint line renders beneath the select, and the
+verdict/location sentences already reachable from earlier tasks ("Judging a normal week takes
+13 weeks of data; you have 1," "Not enough history yet for Site A, Site B, ...") now sit next to
+a selector that tells the same story before a request is even made.
+
+Repo changes: `web/src/Controls.tsx` (suffix logic, hint line, corrected `weeks` doc comment,
+local `BASELINE_WEEKS`); `web/src/style.css` (`.hint` rule; the `.controls label` row-layout
+fix above); `web/test/App.test.tsx` (new test); this log entry. No `server/` writes, no `seed/`
+writes, no response-shape or URL changes.
+
+**My call:** accepted — no filtering or server changes, boundary labels proven by test plus live screenshot, pre-existing doc comment corrected.
+
+**Who was right:** (no disagreement)

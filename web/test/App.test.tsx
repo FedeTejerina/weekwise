@@ -229,6 +229,44 @@ describe('locations quiet line (R1 #1)', () => {
   });
 });
 
+describe('week selector: needs-more-history labels (follow-up to I34)', () => {
+  it('the first 12 weeks (evalIndex < 12) are suffixed; the rest render as the bare date', async () => {
+    setUrl('?account=1&type=call_received&week=2026-07-20');
+    mockFetch(
+      [{ id: 1, name: 'Summit Auto Group', timezone: 'America/Chicago', locationCount: 6 }],
+      {
+        asOf: AS_OF,
+        week: { start: '2026-07-20', end: '2026-07-26', isLatest: true },
+        inProgress: { weekStart: '2026-07-27', daysIn: 1, count: 3 },
+        weeks: FULL_WEEKS,
+        account: { id: 1, name: 'Summit Auto Group', locationCount: 6 },
+        verdict: { state: 'quiet', count: 34, typical: 30.4, usualRange: [20, 42] },
+        locations: {
+          window: { start: '2026-06-29', end: '2026-07-26' },
+          flagged: [],
+          notEnoughHistory: [],
+          quietCount: 6,
+        },
+      },
+    );
+
+    render(<App />);
+    await screen.findByText(/34 calls/);
+
+    // FULL_WEEKS[0..11] — evalIndex < BASELINE_WEEKS — carry the suffix.
+    screen.getByRole('option', { name: '2026-02-02 — needs more history' });
+    screen.getByRole('option', { name: '2026-04-20 — needs more history' });
+
+    // FULL_WEEKS[12] onward — evalIndex >= BASELINE_WEEKS — the bare date, no suffix. Exact
+    // matching (the library default) is itself the negative assertion: it fails if either
+    // option's accessible name carries the suffix.
+    screen.getByRole('option', { name: '2026-04-27' });
+    screen.getByRole('option', { name: '2026-07-20' });
+
+    screen.getByText('Verdicts need 13 weeks of history; earlier weeks show why.');
+  });
+});
+
 describe('single-site suppression (D16)', () => {
   it('account 19 — no location section rendered at all, even though `locations` is simply absent from the API response', async () => {
     setUrl('?account=19&type=lead_created&week=2026-05-18');

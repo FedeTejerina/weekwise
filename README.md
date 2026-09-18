@@ -211,6 +211,13 @@ documented flow:
   beats pretty-but-broken. T12's screenshots were verification evidence that every state renders correctly, not the quality bar.
 - Cache `fetchWeeklyCheckData`'s five queries instead of re-running the full aggregation on
   every single request; harmless on a 20-account seed, real cost on a live, larger dataset.
+- The week selector doesn't scale past this seed. `Controls.tsx` renders every evaluable week
+  as one flat `<select>` — fine for 25 weeks, but unbounded as an account accrues years of
+  history: hundreds of options, no calendar context, nothing to scan by month. The fix: a
+  week-scoped date picker (or a month-grouped select with prev/next-week navigation), bound to
+  Monday-start weeks in the account's own timezone and defaulting to the latest completed week
+  per D7 — more UI work than a flat `<select>`, but bounded and scannable at any history length
+  instead of growing with the data.
 
 ## Clean-clone run
 
