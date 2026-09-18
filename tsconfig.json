@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist/scripts",
+    "types": ["node"],
+    "noEmit": true,
+    // scripts/ imports migrate-config.js, a plain-JS file at the repo root with no .d.ts;
+    // allowJs lets tsc infer its shape instead of needing a declaration file for it.
+    "allowJs": true
+  },
+  "include": ["scripts", "migrate-config.js"]
+}

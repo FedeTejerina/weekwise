@@ -150,3 +150,8 @@ template.
 - **Postgres runs on host port 5432 by default, no setup needed.** If that port is already taken
   on your machine, set `DB_PORT` (e.g. `DB_PORT=5433`) before running `docker compose up` — both
   Compose and `migrate-config.js` read the same variable.
+- **`npm audit` reports one moderate advisory**, in `uuid`, reached through `dockerode` via
+  `testcontainers` (used only by the `sql` test suite). Not fixed: `npm audit fix --force` jumps
+  `testcontainers` to a version that requires Node 22.22, which this Node doesn't meet. It's a
+  dev-only, test-only dependency that never ships, and the `uuid` it pulls in generates container
+  labels, not attacker-controlled input.

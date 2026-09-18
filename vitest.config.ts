@@ -20,8 +20,16 @@ export default defineConfig({
           name: 'sql',
           include: ['test/sql/**/*.test.ts'],
           environment: 'node',
-          env: { TZ },
+          // Defaults to America/Los_Angeles like every other project, but — unlike them —
+          // an ambient TZ is allowed through rather than overridden: T14 needs `TZ=UTC
+          // npm test -- sql` to actually run under UTC, to prove the bucketing SQL gives
+          // identical results either way rather than happening to work under one timezone.
+          env: { TZ: process.env.TZ ?? TZ },
           setupFiles: ['./test/setup/pg-timestamp-parser.ts'],
+          globalSetup: ['./test/sql/global-setup.ts'],
+          // Starting the Postgres container, running migrations and seeding can take a while
+          // on a cold image pull; the default 10s hook timeout isn't enough for that.
+          hookTimeout: 120_000,
         },
       },
       {

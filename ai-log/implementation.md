@@ -722,3 +722,144 @@ the plan had already measured in Python. Two paths, same answer, is the stronges
 this aggregation is right.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I15 — Closing the typecheck gap: root `tsconfig.json` for `scripts/`
+
+**Me:**
+> Before T14: add a root tsconfig that covers scripts/ and include it in npm run typecheck.
+> You were right not to absorb it into T4, but T5b adds the harness and that's the last file I
+> want unchecked. Then continue with T14.
+
+**Agent:** Added `tsconfig.json` at the repo root, extending `tsconfig.base.json`, `include:
+["scripts", "migrate-config.js"]`. Root `package.json`'s `typecheck` script now runs
+`tsc --noEmit -p tsconfig.json` before delegating to the workspaces.
+
+- **Two real errors surfaced immediately, both fixed rather than suppressed:**
+  1. `scripts/agg-check.ts`'s NY-timezone check destructured `nyRows[0]` directly —
+     `noUncheckedIndexedAccess` correctly flags that as possibly `undefined`. Fixed the same way
+     as `getAsOf` in I14: a `nyRows[0]!` plus a one-line comment on why it's safe (a literal
+     `SELECT` with no `FROM` always returns exactly one row).
+  2. `scripts/seed.ts` imports `migrate-config.js`, a plain-JS file with no declaration file —
+     `tsc` refused with "implicitly has an 'any' type." Rather than adding a `.d.ts` or renaming
+     the file (either of which reaches beyond what was asked), turned on `allowJs` in this one
+     root tsconfig, scoped to exactly the files it covers; `server/` and `web/`'s own tsconfigs
+     are untouched.
+- **Proved the wiring isn't a no-op before calling it done**, not just that it compiles clean:
+  ran `npm run typecheck` clean, then deliberately broke `scripts/agg-check.ts` with an obvious
+  type error and confirmed `npm run typecheck` failed at exactly that line (`TS2322` at the
+  injected line), then reverted and confirmed clean again.
+- **Verified independently.** Dispatched the `witness` subagent cold with the same
+  break-then-revert sequence to run itself, plus a final `agg-check.ts` run against the seeded
+  database to confirm nothing about the app's actual behavior changed. It confirmed all of it,
+  including a byte-for-byte diff proving its own revert was exact, and separately confirmed my
+  earlier edits (the `nyRows[0]!` fix) were the only pre-existing diff on that file — nothing
+  else leaked in.
+
+Repo changes: `tsconfig.json` (new, root); `package.json` (root `typecheck` script);
+`scripts/agg-check.ts` (the `nyRows[0]!` null-safety fix); this log entry.
+
+**My call:** accepted. The part that matters isn't that the typecheck passed — it's that it
+deliberately broke agg-check.ts, confirmed the typecheck failed at exactly that line,
+reverted, and confirmed clean again.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I16 — T14: SQL + timezone integration tests
+
+**Me:**
+> Then continue with T14.
+
+**Agent:** Chose `@testcontainers/postgresql` over the "cheaper variant" `TASKS.md` explicitly
+allows (running against the developer's own `compose.yaml` database) — `PLAN.md` §5 already
+named testcontainers as the proposed default, nothing has been said about cutting it, and it's
+on the cut list at position #3, not taken. Went with the full path unless told otherwise.
+
+- **Extracted `seedDatabase()` into `server/src/db/seed.ts`**, so `scripts/seed.ts` and the new
+  test setup load `seed/seed.sql` through the exact same code path rather than two copies that
+  could drift. Re-ran T3's own empty-database check after the refactor before trusting it (still
+  20 / 12,626, still nothing in `seed/`).
+- **`server/test/sql/global-setup.ts`** runs once for the whole `sql` project: starts one
+  ephemeral `postgres:16` container, runs the real migration via node-pg-migrate's programmatic
+  `runner()` (the same migration file T2 wrote, not a re-implementation), seeds it via the
+  shared `seedDatabase()`, and hands the connection string to the test file through
+  `process.env.TEST_DATABASE_URL` — fully isolated from the developer's own `compose.yaml`
+  database and its `DB_PORT` workaround; confirmed by running the suite with and without
+  `DB_PORT` set and getting identical results either way.
+- **`server/test/sql/aggregation.test.ts`**: T4's four bullets as real assertions, plus the §12
+  checks T14 names — account 20 (zero events) still gets a valid week range and causes no error,
+  but contributes zero location rows; the in-progress week of 2026-07-27 never appears in the
+  series or as anyone's default week. 10 tests, all passing on the first real run.
+- **A version conflict, diagnosed rather than forced through:** `@testcontainers/postgresql`
+  latest (12.1.0) pulls in `testcontainers@12.1.0`, which itself now requires Node ≥22.22 — this
+  machine runs 22.12.0. Rather than assume the `EBADENGINE` warning was cosmetic, traced it to
+  `testcontainers`'s own `undici` dependency jumping from `^7.x` to `^8.5.0` between minor
+  versions, and pinned both `@testcontainers/postgresql` and `testcontainers` to `11.14.0` (the
+  last line on `undici@7.x`, which only needs Node ≥20.18.1). A first attempt to pin only
+  `@testcontainers/postgresql` left a stale `testcontainers@12.0.4` in the lockfile — npm
+  reported the workspace "invalid" but didn't self-heal on a second `npm install`; a full
+  `node_modules` + lockfile wipe and reinstall is what actually picked up the pin.
+- **A moderate `npm audit` finding accepted, not silently fixed or silently ignored:** pinning to
+  the 11.x line carries a known moderate advisory in `uuid` (via `dockerode` via `testcontainers`)
+  — a buffer-bounds-check issue. `npm audit fix --force` would resolve it by jumping to
+  `testcontainers@12.0.4`, reintroducing the Node 22.22 requirement this machine can't meet.
+  This is a dev-only, test-only dependency never in the shipped app, and `uuid` here generates
+  container labels, not attacker-controlled input — but it's still a real tradeoff, made visible
+  here rather than buried in a `package.json` diff.
+- **Retired `server/test/sql/placeholder.test.ts` from T1**, and made the `sql` project's TZ
+  respect an ambient override (`env: { TZ: process.env.TZ ?? 'America/Los_Angeles' }`) instead of
+  always overriding it — `unit`/`api`/`web` are untouched and still hard-pinned. Both changes
+  were necessary together: T14's own Done-when needs `TZ=UTC npm test -- sql` to actually run
+  under UTC, which the previous hard-pinned config silently prevented, and the retired
+  placeholder's fixed assertion (`process.env.TZ === 'America/Los_Angeles'`) would have failed
+  under exactly that override. T14's real tests don't assert against `process.env.TZ` at all —
+  they assert on data — so they're the thing the placeholder was always a stand-in for.
+- **Proved the override was real, not just accepted by the shell.** Added a temporary probe
+  test printing `process.env.TZ`, confirmed it read `America/Los_Angeles` by default and
+  genuinely `UTC` under the override (only visible with `--reporter=verbose`, since the default
+  reporter suppresses console output from passing tests), then removed the probe before calling
+  this done.
+- **Verified independently.** Dispatched the `witness` subagent cold with the exact commands,
+  including a check that the `TZ=UTC` run doesn't silently leak back to
+  `America/Los_Angeles` anywhere in its output. It confirmed typecheck clean, `npm test -- sql`
+  and its `TZ=UTC` rerun both at 1 file / 10 tests passed, identical. Its one honestly-reported
+  wrinkle: the leak-check I gave it (`grep -i "America/Los_Angeles\|error"`) matched one line —
+  not a leak or a failure, but the substring "error" inside the passing test's own title
+  ("...without **error**ing"). The witness reported the literal grep result and flagged that the
+  pattern, not the run, was at fault, rather than silently deciding it was fine.
+
+Repo changes: `server/src/db/seed.ts` (new); `scripts/seed.ts` (refactored to use it);
+`server/test/sql/global-setup.ts`, `server/test/sql/aggregation.test.ts` (new);
+`server/test/sql/placeholder.test.ts` (removed); `vitest.config.ts` (`sql` project: TZ override,
+`globalSetup`, `hookTimeout`); `server/package.json` and `package-lock.json`
+(`@testcontainers/postgresql`, `testcontainers` pinned to `11.14.0`, `node-pg-migrate` added);
+this log entry. No `seed/` writes.
+
+**My call:** accepted — the version conflict was traced to undici rather than forced through, and
+the moderate audit finding is named with its tradeoff instead of buried in a diff.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I17 — README: one line on the `npm audit` finding
+
+**Me:**
+> Wait, first add one line to the README's limitations: npm audit reports a moderate advisory in uuid,
+> reached through dockerode via testcontainers. Not fixed because audit fix --force jumps
+> testcontainers to a version requiring Node 22.22, which this Node doesn't meet. It's a
+> dev-only, test-only dependency that never ships, and uuid there generates container labels,
+> not attacker-controlled input.
+
+**Agent:** Added the line to `README.md`'s "Assumptions and known limitations" list, as
+dictated — the finding, why it isn't fixed, and why it's low-risk, matching I16's own reasoning
+rather than a shortened paraphrase of it.
+
+Repo changes: `README.md` (one bullet); this log entry.
+
+**My call:** accepted
+
+**Who was right:** (no disagreement)

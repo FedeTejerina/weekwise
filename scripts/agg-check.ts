@@ -72,7 +72,8 @@ async function main() {
         ('2026-06-03 02:30:00'::timestamp AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York'
       )::date::text AS "weekStart"
   `);
-  const { localTs, weekStart } = nyRows[0];
+  // A literal SELECT with no FROM clause always returns exactly one row.
+  const { localTs, weekStart } = nyRows[0]!;
   console.log(`2026-06-03 02:30 UTC in America/New_York: local ${localTs}, week starting ${weekStart}`);
   check(localTs.startsWith('2026-06-02'), 'lands on local date 2026-06-02');
   check(weekStart === '2026-06-01', 'in the week starting 2026-06-01');
