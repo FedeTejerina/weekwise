@@ -1,0 +1,67 @@
+{
+  "asOf": "2026-07-27T22:20:34Z",
+  "defaultWeek": "2026-07-20",
+  "earliestFullWeek": "2026-02-02",
+  "fullWeekCount": 25,
+  "dedup": {
+    "raw": 12626,
+    "deduped": 12614,
+    "postDedupTotal": 12517,
+    "postDedupByType": {
+      "call_received": 7708,
+      "lead_created": 3023,
+      "appointment_set": 1786
+    }
+  },
+  "examples": {
+    "account6CallsW20260601": {
+      "count": 528,
+      "typical": 43.9,
+      "usualRange": [
+        31,
+        58
+      ],
+      "ratio": 12.03
+    },
+    "account7CallsW20260713": {
+      "count": 3,
+      "typical": 11.1,
+      "usualRange": [
+        5,
+        18
+      ]
+    },
+    "account1CallsW20260720": {
+      "count": 34,
+      "usualRange": [
+        20,
+        42
+      ]
+    }
+  },
+  "account6Spike": {
+    "locationsFlaggedUp": 15,
+    "of": 15,
+    "echoDrops": 0
+  },
+  "locationFlagsExcludingAccount6": {
+    "gate": {
+      "call_received": 4,
+      "lead_created": 4,
+      "appointment_set": 9
+    },
+    "renderable": {
+      "call_received": 4,
+      "lead_created": 3,
+      "appointment_set": 9
+    }
+  },
+  "verdictFlags": {
+    "flags": {
+      "call_received": 10,
+      "lead_created": 5,
+      "appointment_set": 3
+    },
+    "of": 246
+  }
+}
