@@ -58,6 +58,23 @@ everything about them is handled in queries and code.
 its own migrations; when you write the first one, note in its header that it derives from this
 file and say what you adapted.
 
+### 4. Two gate implementations — a fix in one is not a fix
+
+`scripts/measure-anchor.py` (the oracle, T5b) and `server/src/gate.ts` (the TypeScript, T5) both
+implement D8's baseline and the §4 gate independently, on purpose — that's what makes their
+agreement mean something. It also means a bug can exist in one, or both, without the other
+noticing.
+
+Whenever either changes, state explicitly whether the other needs the same change, and why or
+why not. Don't leave it implicit.
+
+**Why:** three log entries already have this exact drift. I19 built a `hasAnyEvent`-style guard
+into the Python oracle so account 20 (zero events ever) wouldn't be miscounted as "quiet" in the
+verdict-flags anchor. I21 found the identical gap independently, the hard way, by running the
+TypeScript against the database — nothing had carried the fix across. Between the two entries,
+nothing checked whether the fix belonged in both places, because the thing that would catch this
+automatically — T15's regression anchor, run against both implementations — doesn't exist yet.
+
 ## Two working habits
 
 **Verify, don't assume.** When you produce a number, show the query that produces it. If you

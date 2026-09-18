@@ -1040,3 +1040,110 @@ so the §4 off-by-one class can't recur in the implementation itself, not just i
 
 **Who was right:** the witness — it caught that the floor test only implied r=1 through classify's
 formula rather than asserting it. I'd have missed that.
+
+---
+
+## I21 — T7: `weeklyCheck()`, SQL + gate → the §6 response
+
+**Me:**
+> Nice catch from the witness, continue with T7 as per dependency order.
+
+**Agent:** `server/src/weeklyCheck.ts`: one function, `(pool, accountId, eventType, weekStart) =>`
+the §6 object — `asOf`, `week`, `weeks`, `account`, `verdict`, and `locations` (omitted per D16).
+Reuses T4's `getAsOf`/`getAccountWeekRanges`/`getWeeklyLocationCounts` and T5's
+`evaluateWindow`/`usualRange` directly rather than re-querying or re-deriving anything; added
+one small `getAccounts` to `aggregation.ts` for account id/name, in the same reuse-and-filter
+style as everything else here. Added `scripts/check.ts`, the literal CLI T7's Done-when asks for.
+
+- **A real bug, caught by actually running it against the database, not by reasoning about the
+  code.** Account 20 — zero events, ever — came back `"quiet"` instead of `"not_enough_history"`.
+  This is exactly the theoretical edge case flagged while designing T5b's verdict-flags
+  exclusion (log I19): an all-zero series floors `m` at 0.1, and `x=0` against that baseline
+  crosses neither threshold, so the raw calendar-only check calls it quiet forever. I'd built the
+  guard into the *Python oracle* at the time but never carried it into the TypeScript gate
+  itself — T5's own tests never exercised it because none of T5's fixtures were "plenty of
+  calendar weeks, entirely zero." Fixed at the source: `evaluateWindow` now takes an optional
+  `hasAnyEvent` parameter (default `true`, so every existing call site and test stays valid),
+  short-circuiting to `not_enough_history` regardless of the calendar check when false. Added a
+  unit test pinning both branches (`quiet` without the flag, `not_enough_history` with it) so
+  this doesn't silently regress the next time someone touches the gate. `weeklyCheck()` passes
+  `hasAnyEvent = locationCount > 0`, which is already-computed, not a second query.
+- **One generalization made, not asked for, flagged here rather than silently baked in:** D16
+  says single-site accounts get no `locations` key. Account 20 has *zero* locations, which D16
+  never names — I extended the omission to `locationCount < 2` (covers both 1 and 0) rather than
+  leave account 20 with a technically-valid but degenerate `{flagged: [], notEnoughHistory: [],
+  quietCount: 0}` object. Reasoned it's a minimal, defensible reading of the same rule rather
+  than a departure from it, but it's still a call outside what T7 or D16 explicitly says, so
+  naming it here rather than treating it as obviously correct.
+- **All seven Done-when cases matched exactly** on account-verdict fields — including
+  `changePct` values I hadn't cross-checked against anything before running them (`-73`, `45`,
+  `-100`) landing exactly on the percentages `§7`'s prose already uses ("about 73% below",
+  "about 45% above", "no leads at all") — and account 6's location breakdown reproduced Site N's
+  exact `count: 40, usualRange: [2, 24]` from `PLAN.md` §6/§7 without that example being consulted
+  while writing the code.
+- **Two things simplified on purpose, both documented in code comments, not hidden:**
+  `weeklyCheck()` calls T4's account-wide, all-account aggregation functions on every single
+  request rather than adding parametrized-by-account SQL variants — correct, and fine at this
+  dataset's scale, but a real inefficiency if this ever mattered at scale. `asOf` needed a
+  one-line reformat (`getAsOf`'s `::text` cast avoids `pg`'s `Date`-parsing pitfall but leaves a
+  space instead of `T`/`Z`) — caught by comparing my first real run's output against `PLAN.md`
+  §6's example format, not assumed correct from the type signature.
+- **Verified independently.** Dispatched the `witness` subagent cold with all seven cases and
+  the exact expected values, plus a full typecheck and test-suite rerun. All seven matched,
+  including the two no-`locations`-key checks done programmatically (not just visual
+  inspection), and both `npm run typecheck` and `npm test` came back clean.
+
+Repo changes: `server/src/weeklyCheck.ts`, `scripts/check.ts` (new); `server/src/gate.ts`
+(`hasAnyEvent` parameter); `server/src/db/aggregation.ts` (`getAccounts`);
+`server/test/unit/gate.test.ts` (new test for the `hasAnyEvent` branch); this log entry. No
+`seed/` writes.
+
+**My call:** accepted — fixed at the source with a default that keeps every existing call site
+valid, and pinned both branches with a test. Flagged the D16 extension instead of baking it in.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I22 — D16 extension confirmed (no PLAN.md edit); new CLAUDE.md rule on the two gates
+
+**Me:**
+> Two things, then T15.
+>
+> D16: yes, extend it to locationCount < 2. Just do not modify the PLAN since we are already on
+> implementing phase and that's against the exercise.
+>
+> Add a rule to CLAUDE.md: there are two implementations of the gate, the Python oracle and
+> the TypeScript. A fix in one is not a fix. Whenever either changes, state explicitly whether
+> the other needs the same change. Three entries now have had them drift, I19 the harness, I21
+> the TypeScript, and the anchor test can't see it.
+
+**Agent:**
+
+- **D16's generalization from I21 is confirmed as-is, with no `PLAN.md` change.** The code
+  already implements `locationCount < 2`; nothing to touch there. Noted for the record: this is
+  a deliberate departure from the errata/addition/reversal categorization I7 established for
+  `PLAN.md` itself — that rule governed fixing the *plan's own text* before implementation
+  started. Now that implementation is underway, ambiguous-but-reasonable judgment calls like
+  this one get settled in `ai-log/implementation.md` only; `PLAN.md` stays exactly as closed on
+  2026-09-17, full stop, per the exercise's own structure.
+- **Added `CLAUDE.md` rule 4**, after rule 3, in the same voice as the others: whenever
+  `scripts/measure-anchor.py` or `server/src/gate.ts` changes, state explicitly whether the
+  other needs the same change, and why or why not. Named I19 and I21 as the two entries that
+  already drifted, and named the actual reason nothing caught it in between: T15 (the
+  regression anchor that would run against both) doesn't exist yet.
+- **Checked, not assumed, that both implementations agree right now.** Reread
+  `measure-anchor.py`'s `gate()` — it already takes `has_history` and short-circuits to
+  `not_enough_history` when false, wired through `account_gate` via
+  `account_id in has_any_event`, from I19. That already matches I21's TypeScript fix; there is
+  no live drift to correct today. The new rule is about the next change, not a backlog item.
+
+Repo changes: `CLAUDE.md` (rule 4 added); this log entry. No `PLAN.md`, no `seed/` writes, no
+application code.
+
+**My call:** accepted — it verified both implementations actually agree today instead of letting a
+new rule imply a backlog, and it drew the line on PLAN.md edits correctly.
+
+**Who was right:** me — editing PLAN.md mid-implementation is exactly the retrofitting the brief
+warns against. The erratum/addition/reversal rule governed the plan's text before code existed,
+not after.
