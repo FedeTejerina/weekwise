@@ -1,6 +1,14 @@
 import type { Pool } from 'pg';
-import { getAccounts, getAccountWeekRanges, getAsOf, getWeeklyLocationCounts } from './db/aggregation.js';
-import { evaluateWindow, usualRange, type GateState } from './gate.js';
+import {
+  getAccounts,
+  getAccountWeekRanges,
+  getAsOf,
+  getWeeklyLocationCounts,
+  type AccountSummary,
+  type AccountWeekRange,
+  type WeeklyLocationCounts,
+} from './db/aggregation.js';
+import { evaluateWindow, usualRange, type GateResult, type GateState } from './gate.js';
 
 export type EventType = 'call_received' | 'lead_created' | 'appointment_set';
 
@@ -55,13 +63,39 @@ export interface WeeklyCheckResponse {
   locations?: LocationsResponse;
 }
 
+/** One location's raw gate result — before D16 decides whether it's ever shown. */
+export interface LocationEvaluation {
+  location: string;
+  result: GateResult;
+}
+
+/**
+ * The shared computation behind `weeklyCheck()`: the account verdict, plus every location's
+ * gate result, *unsuppressed* — D16 (whether a `locations` section is shown at all) is a
+ * response-shaping decision `weeklyCheck()` makes on top of this, not something baked in here.
+ * T15's regression anchor needs exactly this: the gate's real behaviour on every location,
+ * including the single-site ones D16 hides, so the suppression is a tested fact rather than an
+ * accident (log I7/T15).
+ */
+export interface AccountWeekEvaluation {
+  asOf: string;
+  weeks: string[];
+  evalIndex: number;
+  account: { id: number; name: string };
+  locationCount: number;
+  weekStart: string;
+  isLatest: boolean;
+  accountResult: GateResult;
+  locationEvaluations: LocationEvaluation[];
+}
+
 function addDays(isoDate: string, days: number): string {
   const d = new Date(`${isoDate}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
-function weekListFrom(earliestFullWeek: string, defaultWeek: string): string[] {
+export function weekListFrom(earliestFullWeek: string, defaultWeek: string): string[] {
   const weeks: string[] = [];
   let w = earliestFullWeek;
   while (w <= defaultWeek) {
@@ -75,14 +109,21 @@ function changePctFor(count: number, typical: number): number {
   return Math.round((count / typical - 1) * 100);
 }
 
-export async function weeklyCheck(
-  pool: Pool,
-  accountId: number,
-  eventType: EventType,
-  weekStart: string,
-): Promise<WeeklyCheckResponse> {
-  const column = COLUMN_BY_EVENT_TYPE[eventType];
+/**
+ * Everything `evaluateAccountWeek` needs from the database, fetched once. Separated out so a
+ * caller evaluating many (account, type, week) combinations — T15's regression anchor, chiefly
+ * — pays for the round trip once instead of once per combination, while still going through
+ * the exact same evaluation code `weeklyCheck()` uses (log I19/CLAUDE.md rule 4: two
+ * implementations of the same computation is exactly what drifts).
+ */
+export interface WeeklyCheckData {
+  asOf: string;
+  accounts: AccountSummary[];
+  ranges: AccountWeekRange[];
+  allLocationRows: WeeklyLocationCounts[];
+}
 
+export async function fetchWeeklyCheckData(pool: Pool): Promise<WeeklyCheckData> {
   const [asOfText, accounts, ranges, allLocationRows] = await Promise.all([
     getAsOf(pool),
     getAccounts(pool),
@@ -92,6 +133,17 @@ export async function weeklyCheck(
   // getAsOf's `::text` cast avoids pg's Date parsing but leaves a space, not the `T`/`Z` PLAN.md
   // §6 publishes; occurred_at is already UTC, so this is textual reformatting, not a conversion.
   const asOf = `${asOfText.replace(' ', 'T')}Z`;
+  return { asOf, accounts, ranges, allLocationRows };
+}
+
+export function evaluateAccountWeekFromData(
+  data: WeeklyCheckData,
+  accountId: number,
+  eventType: EventType,
+  weekStart: string,
+): AccountWeekEvaluation {
+  const column = COLUMN_BY_EVENT_TYPE[eventType];
+  const { asOf, accounts, ranges, allLocationRows } = data;
 
   const account = accounts.find((a) => a.id === accountId);
   const range = ranges.find((r) => r.accountId === accountId);
@@ -128,6 +180,45 @@ export async function weeklyCheck(
     ACCOUNT_K,
     accountHasAnyEvent,
   );
+
+  const locationEvaluations: LocationEvaluation[] = locationNames.map((location) => ({
+    location,
+    result: evaluateWindow(seriesFor(location), evalIndex, LOCATION_WINDOW_WEEKS, locationCount),
+  }));
+
+  return {
+    asOf,
+    weeks,
+    evalIndex,
+    account: { id: account.id, name: account.name },
+    locationCount,
+    weekStart,
+    isLatest: weekStart === range.defaultWeek,
+    accountResult,
+    locationEvaluations,
+  };
+}
+
+/** Convenience for a single lookup — fetches, then evaluates. `weeklyCheck()` uses this. */
+export async function evaluateAccountWeek(
+  pool: Pool,
+  accountId: number,
+  eventType: EventType,
+  weekStart: string,
+): Promise<AccountWeekEvaluation> {
+  const data = await fetchWeeklyCheckData(pool);
+  return evaluateAccountWeekFromData(data, accountId, eventType, weekStart);
+}
+
+export async function weeklyCheck(
+  pool: Pool,
+  accountId: number,
+  eventType: EventType,
+  weekStart: string,
+): Promise<WeeklyCheckResponse> {
+  const evaluation = await evaluateAccountWeek(pool, accountId, eventType, weekStart);
+  const { accountResult, locationCount } = evaluation;
+
   const verdict: VerdictResponse = { state: accountResult.state };
   if (accountResult.state !== 'not_enough_history') {
     verdict.count = accountResult.count!;
@@ -139,10 +230,10 @@ export async function weeklyCheck(
   }
 
   const response: WeeklyCheckResponse = {
-    asOf,
-    week: { start: weekStart, end: addDays(weekStart, 6), isLatest: weekStart === range.defaultWeek },
-    weeks,
-    account: { id: account.id, name: account.name, locationCount },
+    asOf: evaluation.asOf,
+    week: { start: weekStart, end: addDays(weekStart, 6), isLatest: evaluation.isLatest },
+    weeks: evaluation.weeks,
+    account: { ...evaluation.account, locationCount },
     verdict,
   };
 
@@ -151,8 +242,7 @@ export async function weeklyCheck(
     const notEnoughHistory: string[] = [];
     let quietCount = 0;
 
-    for (const location of locationNames) {
-      const result = evaluateWindow(seriesFor(location), evalIndex, LOCATION_WINDOW_WEEKS, locationCount);
+    for (const { location, result } of evaluation.locationEvaluations) {
       if (result.state === 'not_enough_history') {
         notEnoughHistory.push(location);
       } else if (result.state === 'quiet') {

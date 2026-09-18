@@ -1147,3 +1147,63 @@ new rule imply a backlog, and it drew the line on PLAN.md edits correctly.
 **Who was right:** me — editing PLAN.md mid-implementation is exactly the retrofitting the brief
 warns against. The erratum/addition/reversal rule governed the plan's text before code existed,
 not after.
+
+---
+
+## I23 — T15: the regression anchor, run against the real production code
+
+**Me:**
+> Excellent, go for T15
+
+**Agent:** Before writing the test, refactored `weeklyCheck.ts` in two steps, both to avoid the
+exact problem CLAUDE.md rule 4 was just written for: T15 needs the gate's *unsuppressed*
+per-location results (including the single-site accounts D16 hides from the real response), and
+it needs to evaluate ~1,300 (account, type, week) combinations — calling the original
+`weeklyCheck()` that many times would mean either writing a second, parallel loop over
+accounts/locations/weeks (drift risk) or hundreds of redundant full-dataset queries (slow).
+
+- **Split `evaluateAccountWeek` into a data fetch and a pure evaluation.** `fetchWeeklyCheckData`
+  does the one Postgres round trip; `evaluateAccountWeekFromData` (pure, synchronous) does the
+  actual per-account, per-location gate evaluation and returns it *unsuppressed* —
+  `weeklyCheck()` now calls this and applies D16's suppression as a response-shaping step on
+  top, rather than baking it into the computation. T15's test fetches once and calls the pure
+  function ~1,300 times in-memory; re-ran the full T7 seven-case sweep after each refactor step
+  and got byte-identical output both times — the split changed nothing observable.
+- **`server/test/sql/regression-anchor.test.ts`** goes through this same function — not a second
+  reimplementation of the loop — for all five things T15 names: 15/15 account-6 locations up on
+  2026-06-01; 0 echo drops across every event type and evaluable week; location flags excluding
+  account 6 at gate level (4/4/9, deliberately still looping over the single-site accounts) and
+  renderable-only (4/3/9, filtering them out) with a direct assertion that the gap is exactly 1;
+  and verdict flags (10/5/3 of 246), masking only account 6's 2026-06-01 cell while still
+  counting its other weeks, with account 20 excluded from that count entirely and the reason
+  stated in a comment rather than left implicit.
+- **All five matched exactly on the first real run**, through Postgres via testcontainers and
+  the actual `gate.ts`/`aggregation.ts` production code — not the Python oracle, not a
+  hand-computed fixture. This is the strongest form of agreement between the two
+  implementations CLAUDE.md rule 4 now asks to keep in sync: same architecture question (D8 +
+  §4), two independent languages and code paths, identical numbers.
+- **Verified independently, and the witness caught a real, if harmless, unstated assumption.**
+  Dispatched it cold with the five items and told it to judge whether each assertion's logic
+  matches its claim, not just its name — mirroring how it caught the floor-test gap in T5. It
+  confirmed all five, but flagged that the gate-level location-flags loop excluded account 20
+  without TASKS.md's own wording calling for that exclusion. Checked: harmless in fact (account
+  20 has zero locations, so it contributes nothing whether looped over or not — confirmed by
+  T14's own "account 20 contributes no location rows" test), but still an assumption the test
+  shouldn't have needed. Removed the exclusion so the loop matches the anchor's literal
+  definition (only account 6 excluded), reran, and got the identical 4/4/9 and 4/3/9 — direct
+  proof the exclusion had been a no-op, not a masked bug.
+- **One place a broader check than the literal wording was kept, not narrowed, and the reasoning
+  is why:** the echo-drop test counts `flagged_down` across the *entire* location-evaluable
+  range (2026-05-18 .. 2026-07-20), not narrowly "the weeks after the spike leaves the 12-week
+  baseline window" as TASKS.md's prose frames it. Zero across the wider range implies zero
+  across that narrower one; computing the narrower range precisely would need to track exactly
+  when the spike week exits each location's own 12-week baseline, which buys nothing here.
+
+Repo changes: `server/src/weeklyCheck.ts` (split into `fetchWeeklyCheckData` +
+`evaluateAccountWeekFromData`, `weekListFrom` exported); `server/test/sql/regression-anchor.test.ts`
+(new); this log entry. No `seed/` writes.
+
+**My call:** accepted — the five anchor facts matched through the real production path on the first run, and it re-ran T7's seven-case sweep after each refactor step instead of trusting the split
+
+**Who was right:** the witness — it flagged an exclusion the anchor's wording never asked for, and
+removing it proved the exclusion had been a no-op rather than masking anything.
