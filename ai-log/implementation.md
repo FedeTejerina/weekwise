@@ -1611,3 +1611,60 @@ just that the suite stayed green, and it gave the witness R1's own text rather t
 of it.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I31 — T16 (parts 1–3): what was cut, the R1 findings left alone, and next steps
+
+**Me:**
+> Now T16, the last task. It needs four things:
+>
+> 1. What actually got cut from the cut list. Nothing was, in the end, say so plainly rather
+>    than leaving the section out.
+> 2. The three review findings I chose not to fix (R1 #5, #7, #8), each with what it is and why
+>    I left it: all three require changing something already verified, two gate implementations
+>    plus the regenerated anchor, the documented §6 response shape, and the API path everything
+>    depends on. None is reachable on this seed or through the documented flow.
+> 3. What I'd do with another day.
+> 4. The clean-clone run: fresh clone into a new directory, follow the README's own four
+>    commands exactly as written, and record the real elapsed time. Do this last, after
+>    everything else is committed, if anything changes afterwards the timing is stale.
+
+**Agent:** Parts 1–3 first. Part 4 needs a committed tree to time honestly — the app has been
+run and verified constantly throughout this session, but never from a state anyone outside it
+could actually `git clone`.
+
+- **Checked the cut list against the repo rather than against memory** before writing "nothing
+  was cut": T13's component tests (I29), T10's `explain()` seam (I25, tested), T14 against
+  `testcontainers` rather than the compose database (I16, the explicit non-cut choice), T11's
+  full week control (I27), T9's in-progress line (I24) — all five items on `TASKS.md`'s own cut
+  list, all five shipped. Said so plainly rather than omitting the section, per your own
+  instruction and the plan's own logic: silence and a quietly-taken cut look identical from
+  outside.
+- **R1 #5, #7, #8, each written with the specific already-verified thing it would put back in
+  motion** — not a generic "known issue" note. #5 costs re-running T5b's oracle and T15's
+  regression anchor, because CLAUDE.md rule 4 means the inclusion-rule fix can't land in one
+  gate implementation alone. #7 costs the documented §6 response shape and the fixtures in
+  `server/test/api` that already pin it. #8 costs the one `/api/weekly-check` path every API
+  test already exercises. Cross-checked each claim against the actual code before writing it
+  down rather than trusting R1's own description: confirmed `PLAN.md` §6's JSON example really
+  has no `type` field, confirmed `/api/weekly-check` really does call `fetchWeeklyCheckData`
+  twice, re-read I3's own wording on the 16-week minimum rather than paraphrasing it from
+  memory.
+- **"With another day" ordered by what it actually costs**, not by severity or by list order:
+  the double-read first because it's contained to one file with nothing to re-verify, the
+  location-inclusion rule last because it's the one that reaches into both gate implementations.
+- **Replaced T1b's provisional "not yet run end to end" status note**, which had gone stale the
+  moment `db:setup` and `dev` started working, with the true current state — every command
+  verified individually and repeatedly — and pointed it at a new, explicitly **Pending**
+  "Clean-clone run" section rather than silently deferring it with no visible placeholder.
+
+Repo changes: `README.md` (cut-list accounting, the three R1 findings, next-day list, the
+`Running it` status note updated, a pending `Clean-clone run` section); this log entry.
+
+**Ready for part 4 once this is committed** — the timing run needs a tree an outside clone would
+actually see, not the working tree this session has been editing.
+
+**My call:**
+
+**Who was right:**

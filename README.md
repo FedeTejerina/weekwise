@@ -11,8 +11,8 @@ No alerting, no machine learning, no forecasting — the brief rules those out, 
 built to be explainable in one sentence.
 
 This README covers the stack, how to run it, and the assumptions a reviewer would otherwise
-mistake for bugs. What gets cut under time pressure, and a timed clean-clone run, are recorded at
-the bottom once the rest of the app exists.
+mistake for bugs. What was actually cut, what a later code review found and left alone, and a
+timed clean-clone run are recorded at the bottom.
 
 ## Stack
 
@@ -53,11 +53,13 @@ Then open the app and pick an account from the URL or the picker.
 **Tests:** `npm test` runs all four Vitest projects (`unit`, `sql`, `api`, `web`). Docker must be
 running first — the `sql` project executes real queries against the seeded database.
 
-> **Status: these commands are the intended path, not yet run end to end.** `db:setup` and `dev`
-> don't exist as working scripts yet — this section is being written before the code that backs
-> it, on purpose, so the assumptions below are recorded as decisions rather than reconstructed
-> later. A timed run of exactly these four commands against a clean clone, once the app is
-> complete, is recorded in the closing section of this README.
+> **Status:** every command above has been run individually, repeatedly, throughout
+> development — `docker compose up -d`, `npm ci`, `npm run db:setup`, and `npm run dev` all
+> work exactly as written. What's still outstanding is the one measurement that can only be
+> taken once, at the very end: a timed run of exactly these four commands against a completely
+> fresh clone, recorded in [Clean-clone run](#clean-clone-run) below. That run has to wait for
+> the current changes to be committed — timing a clone of an uncommitted tree would measure the
+> wrong repo.
 
 ## What moment is the page showing, and why isn't it "today"?
 
@@ -159,3 +161,65 @@ template.
   `package.json` written without a `^` or `~`). This is about reproducible installs — the same
   clean clone giving the same `node_modules` a year from now — not supply-chain hardening; it
   doesn't check what a package does, only that the version doesn't silently drift.
+
+## What was cut
+
+Nothing. Every item on the plan's own cut list — T13's component tests, T10's `explain()` seam,
+T14 running against `testcontainers` instead of the developer's own Compose database, T11's full
+week control rather than just the default week, and T9's in-progress line — shipped. Saying so
+plainly here rather than leaving the section silent: from outside, an item that was never taken
+off the list and one that quietly vanished look identical unless someone states which.
+
+## Known gaps, found in code review, left deliberately
+
+A review pass (`ai-log/review.md`, entry R1) found ten issues. Seven were fixed
+(`ai-log/implementation.md`, I30). These three were not — each would mean changing something
+already independently verified, and none is reachable on this seed or through the page's own
+documented flow:
+
+- **The TypeScript and the Python oracle can disagree about which locations exist, and whether
+  an account has any history at all** (`server/src/db/aggregation.ts`,
+  `server/src/weeklyCheck.ts`). Both currently count a location, or mark an account as having
+  history, from *every* recorded event — including one that only ever happened in the
+  still-elapsing in-progress week, before it has entered a full-week series. On this seed that
+  never happens: log I3 already established that no location's history is confined to fewer
+  than 16 full weeks by the earliest evaluable point. Fixing it for real means changing the
+  inclusion rule in both gate implementations together (CLAUDE.md rule 4) and re-running T5b's
+  oracle and T15's regression anchor against the new numbers — real work, on a case the seed
+  can't exercise and the review didn't reproduce, only reasoned through by reading the code.
+- **The Activity picker can show the wrong noun for a few hundred milliseconds.** Changing the
+  event type updates the URL immediately, but the verdict still shows the *previous* type's
+  numbers until the new fetch returns — briefly, "34 leads" next to a usual range that's
+  actually calls. The API's own response carries no `type` field to render from instead of the
+  URL, and adding one changes the response shape `PLAN.md` §6 documents and `server/test/api`
+  already pins. In normal use it resolves before anyone can read it; it only persists if that
+  specific fetch then fails.
+- **`/api/weekly-check` reads the database twice per request** — once to validate the requested
+  account and week, once again inside `weeklyCheck()` itself to evaluate them — against two
+  separate snapshots taken moments apart. On a live, writable dataset those could disagree; on
+  this frozen seed they can't. Collapsing it to one read means a `weeklyCheck()` variant that
+  accepts already-fetched data, threaded through the one API path every test in
+  `server/test/api` already exercises — not a local, isolated change.
+
+## With another day
+
+- Fix the three gaps above properly, in the order that costs least first: the double database
+  read (contained to one file, nothing else to re-verify), then the type-during-fetch mismatch
+  (add the field, update the fixtures it would touch), then the location-inclusion rule — the
+  one that actually reaches into both gate implementations and needs a re-verified anchor.
+- A loading state. The page currently shows nothing at all between navigation and the first
+  response — fine on a local database, not fine on a slow connection.
+- Real account scoping behind whatever auth a production deployment already has (D17 already
+  names this as deliberately out of scope for the exercise, not forgotten here).
+- No visual polish pass. The CSS stays intentionally plain — per the brief, unstyled-but-clear
+  beats pretty-but-broken. T12's screenshots were verification evidence that every state renders correctly, not the quality bar.
+- Cache `fetchWeeklyCheckData`'s five queries instead of re-running the full aggregation on
+  every single request; harmless on a 20-account seed, real cost on a live, larger dataset.
+
+## Clean-clone run
+
+**Pending.** This has to be the last thing recorded in this README, after everything else is
+committed — timing a clone of an uncommitted tree would measure a repo nobody else could
+actually clone. Once committed: a fresh `git clone` into an empty directory, the four commands
+above run exactly as written and in that order, reaching a working page at
+`/?account=6&type=call_received&week=2026-06-01`, with the elapsed time recorded here.
