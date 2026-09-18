@@ -151,9 +151,10 @@ as I2), then went one step further and asked when the field can be non-empty at 
 Repo changes: `PLAN.md` (§6 locations block and a second erratum note); `TASKS.md` (T7 note on
 the state the seed cannot show); this log entry. No application code.
 
-**My call:**
+**My call:** accepted — I flagged one wrong name; it asked when the field can ever be non-empty,
+and that answer changed three tasks.
 
-**Who was right:**
+**Who was right:** me on the name, the agent on what it implied.
 
 ## I4 — Grilling TASKS.md against PLAN.md
 
@@ -214,9 +215,10 @@ T10's wording rules) plus five open questions. Nothing in `TASKS.md` or `PLAN.md
 
 Repo changes: `ai-log/implementation.md` (this entry). No application code.
 
-**My call:**
+**My call:** accepted — it found §12 promised re-measuring a changed count with no instrument in
+the repo to re-measure with.
 
-**Who was right:**
+**Who was right:** the grilling.
 
 ---
 
@@ -270,9 +272,10 @@ rule above, without asking. Nothing edited yet.
 
 Repo changes: `ai-log/implementation.md` (this entry). No application code.
 
-**My call:**
+**My call:** accepted — it found the anchor differs by exactly one flag depending on whether you
+count what the page actually renders.
 
-**Who was right:**
+**Who was right:** the grilling.
 
 ---
 
@@ -310,9 +313,10 @@ estimates. Nothing edited yet.
 
 Repo changes: `ai-log/implementation.md` (this entry). No application code.
 
-**My call:**
+**My call:** accepted — it caught that a harness written after the code it checks gets written
+until it agrees, which reverses round 2.
 
-**Who was right:**
+**Who was right:** the grilling, overtuned an answer I'd already given.
 
 ---
 
@@ -375,9 +379,10 @@ sweep found `PLAN.md`'s numbers otherwise sound.
 Repo changes: `PLAN.md` (three errata, one addition); `TASKS.md` (rewritten); this log entry.
 No application code.
 
-**My call:**
+**My call:** accepted — it rewrote the task list in one pass instead of patching task by task,
+and swept §12 for the same class of gap.
 
-**Who was right:**
+**Who was right:** (no disagreement)
 
 ---
 
@@ -1952,5 +1957,31 @@ fix above); `web/test/App.test.tsx` (new test); this log entry. No `server/` wri
 writes, no response-shape or URL changes.
 
 **My call:** accepted — no filtering or server changes, boundary labels proven by test plus live screenshot, pre-existing doc comment corrected.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I36 — README: Prettier as deferred tooling
+
+**Me:**
+> README-only, no code. Add one bullet to `## With another day`: adopt Prettier (default
+> options, code only — exclude Markdown and `seed/` so reflows don't bury real diffs) plus a
+> `format:check` step. State it as deferred tooling, not a gap: style stayed consistent via
+> review because one author (the agent) wrote it all, but a second human contributor is where
+> an unenforced style breaks. Log as usual.
+
+**Agent:** README-only, no code touched. Added one bullet at the end of `## With another day`,
+in that section's unbolded style: adopt Prettier with default options, code only (Markdown and
+`seed/` excluded so reflows don't bury real diffs), plus a `format:check` step. Stated as
+deferred tooling, not a gap — verified first that no Prettier config, script, or dependency
+exists anywhere in the repo, so there was nothing current to describe; style stayed consistent
+via review because a single author wrote it all, and a second human contributor is where
+unenforced style breaks.
+
+Repo changes: `README.md` (one bullet in `With another day`); this log entry. No code, no
+`seed/` writes.
+
+**My call:** accepted — deferred-tooling framing held, exclusions stated, no tool invented where none exists.
 
 **Who was right:** (no disagreement)

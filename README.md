@@ -218,6 +218,10 @@ documented flow:
   Monday-start weeks in the account's own timezone and defaulting to the latest completed week
   per D7 — more UI work than a flat `<select>`, but bounded and scannable at any history length
   instead of growing with the data.
+- Adopt Prettier for code only (default options, Markdown and `seed/` excluded so reflows don't
+  bury real diffs), with a `format:check` step. Deferred tooling, not a gap: style stayed
+  consistent under review because a single author wrote it all, but that's exactly what breaks
+  with a second human contributor.
 
 ## Clean-clone run
 
