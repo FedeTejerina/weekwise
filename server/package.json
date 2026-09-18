@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@stdlib/stats-base-dists-negative-binomial-cdf": "0.2.3",
     "pg": "8.23.0"
   },
   "devDependencies": {

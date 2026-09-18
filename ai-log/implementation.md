@@ -917,3 +917,126 @@ entry.
 package with no version to confirm save-exact writes exact, then reverted cleanly.
 
 **Who was right:** (no disagreement)
+
+---
+
+## I19 — T5b: the measurement harness and CDF fixture
+
+**Me:**
+> Great, now onto T5b
+
+**Agent:** Ported the D8 trim path and the §4 gate into `scripts/measure-anchor.py`, a second,
+independent implementation that parses `seed/seed.sql` directly — never Postgres, never the
+TypeScript — so it can't inherit T4's bugs and stay blind to the exact failure it exists to
+catch.
+
+- **Parsing:** two regexes over `seed/seed.sql`'s regular, one-INSERT-per-line format (confirmed
+  first, not assumed, that no field contains an escaped quote). Dedup on every column but `id`.
+- **Week ranges, replicated from `server/src/db/aggregation.ts`, not re-derived from scratch:**
+  same global-min/max-converted-per-timezone logic, same Monday-boundary edge case. Matched on
+  the first run: 20 accounts, 12,626 raw → 12,614 deduped, as-of `2026-07-27 22:20:34`, every
+  account converging on the same 25-week range `2026-02-02`..`2026-07-20` — independently
+  reproducing T4/T14's numbers through a completely different code path and language.
+- **The gate (D13):** trimmed-mean baseline, `NegBin(r=10m, p=10/(10+w))` via `scipy.stats.nbinom`
+  — confirmed algebraically first that `r=10m, p=10/(10+w)` gives scipy's own mean formula
+  `r(1-p)/p = wm`, matching PLAN.md §4's "whose mean is w·m" before trusting any output. A
+  brute-force search implements the off-by-one-corrected usual-range definition (log I7's
+  erratum), not the original wrong sentence.
+- **One real bug caught before trusting anything downstream.** The first full run gave the three
+  account-level examples exactly right, but the location-level checks were wildly wrong (14/15
+  spike locations, hundreds of location flags instead of 4/4/9). Traced it to `gate()` being
+  handed a single week's count as `x` for the location gate's 4-week window, instead of the
+  window's own 4-week sum — account-level checks passed by coincidence, since `w=1` there, and a
+  single week already *is* its own 1-week window. Fixed by moving the window-sum computation
+  inside `gate()` itself, so a caller can no longer pass a single week where a multi-week sum
+  belongs. After the fix, all seven anchor facts matched on the next run: 15/15 flagged up, 0
+  echo drops, location flags 4/4/9 and 4/3/9 renderable, verdict flags 10/5/3 of 246.
+- **Excluding account 20 from the verdict-flags denominator, and why "quiet" isn't enough.**
+  Account 20 has zero events ever; the raw gate formula, applied naively, would call it "quiet"
+  every week forever (a near-zero floored baseline against zero observed never crosses either
+  threshold) — which would inflate the denominator from `19×13−1=246` to `20×13−1=259` without
+  ever changing the flag counts, silently breaking the published anchor. `gate()` now also checks
+  `has_any_event`, `not_enough_history` cells are excluded from every rate calculation, and
+  account 20 is excluded from the verdict-flags loop for exactly that reason, not just "20 has no
+  events so skip it" without explaining why the raw formula alone doesn't already handle it.
+- **A mistake caught on review, not by a test, before this was called done:** the first version
+  of `expected-anchor.json` had its `examples` block built from hard-coded literals matching the
+  Done-when's own numbers, not from the variables the script had just computed — meaning a real
+  regression later would never show up as a diff, defeating the entire point of §12's "a changed
+  count is re-measured, not adjusted by hand." Rewrote it to thread the actual `named_example()`
+  return values through, then confirmed reruns are still byte-for-byte deterministic (no
+  randomness leaking in from set/dict ordering or floating-point formatting).
+- **`scripts/gen-nbinom-fixture.py`** absorbs the old T6: one committed script, one scipy call,
+  producing `scripts/nbinom-fixture.json` (360 cases) for T5 to check `@stdlib`'s CDF against.
+  Deliberately independent of `measure-anchor.py` — doesn't import from it or reuse its computed
+  baselines, so a bug in one script's parameter-building can't hide inside the other's. Includes
+  120 cases with a deliberately fractional `r` (values D8's own formula, the mean of 10 integers,
+  can never produce on this seed) because the CDF library must be correct for any real-valued
+  baseline the gate might someday see, not just the ones this dataset happens to hit.
+- **Linted with `ruff` before calling this done** (`uv run --with ruff ruff check`), not just
+  run once and left — caught a naive-datetime warning (deliberate here; annotated why rather
+  than silenced blindly), one truly-unused variable, and two `sorted(...)[0]` calls that should
+  have been `min(...)`.
+- **Verified independently.** Dispatched the `witness` subagent cold with the seven facts and the
+  exact commands, including a determinism rerun and a direct read of the `examples` block's
+  source to confirm it traces to computed variables, not literals repeated a second time (the
+  exact mistake caught above, checked again from the outside). All seven facts matched, the
+  rerun was byte-identical, and the source-level check confirmed no literals had crept back in.
+
+Repo changes: `scripts/measure-anchor.py`, `scripts/gen-nbinom-fixture.py`,
+`scripts/expected-anchor.json`, `scripts/nbinom-fixture.json` (all new); this log entry. No
+`seed/` writes, no application code.
+
+**My call:** accepted — it caught its own fixture hard-coding the expected answers, which would
+have made every future regression invisible, and a window-sum bug the account-level checks
+passed over by coincidence.
+
+**Who was right:** (no disagreement)
+
+---
+
+## I20 — T5: the gate library, pure TypeScript
+
+**Me:**
+> Great catches, continue with T5.
+
+**Agent:** `server/src/gate.ts`: `trimmedMean`, `classify`, `evaluateWindow`, `usualRange` — no
+database, no imports outside `@stdlib/stats-base-dists-negative-binomial-cdf`. `usualRange` is
+built directly on top of `classify` (brute-forcing `lo`/`hi` by calling the real gate function
+in a loop), not a separate closed-form recomputation of the range — the same defense-in-depth
+the §4 erratum (log I7) exists to check for, built into the implementation itself, not just the
+test.
+
+- **Verified against T5b's proven-correct numbers before writing a single test,** not just typed
+  the formula and hoped: called `usualRange(43.9, 1, 1)` and `usualRange(11.1, 1, 1)` directly
+  (via a throwaway script, deleted after) and got `[31, 58]` and `[5, 18]` — the exact figures
+  T5b's independent Python harness already measured, on the first try, with an implementation
+  that scans via `classify` rather than a literal port of the Python's raw-CDF loop. Two
+  different mechanisms, same answer, is what "independent" is for.
+- **Tests pin all seven things T5 lists**, one `describe` block per item: trimmed-mean tie
+  handling (a constructed case where naively dropping "every week equal to the min/max" would
+  remove three weeks instead of two, catching that specific bug class); the 15/16-week and
+  12/13-week history boundaries for location and account; the floor (`m` staying at 0.1,
+  asserting `r=1` directly rather than only the floored `typical`); `usualRange`
+  self-consistency across six `(m, w, k)` cases, brute-forced against `classify` itself; one
+  constructed case that flags at `k=1` and is quiet at `k=15`; and the fixture-agreement check
+  reading `scripts/nbinom-fixture.json` directly and comparing every one of its 360 rows against
+  `@stdlib`'s own CDF — measured at 4.06e-14 max relative error, the same order of magnitude as
+  E7's original 3.2e-14, well inside the 1e-10 safety margin.
+- **Verified independently, and it found a real gap before I did.** Dispatched the `witness`
+  subagent cold with the seven items and told it to read the test file itself and judge whether
+  each assertion actually matches its claim, not just that a plausibly-named test exists. It
+  confirmed six of seven cleanly, and on the floor test it correctly flagged that asserting
+  `typical === 0.1` only *implies* `r = 1` through `classify`'s formula — the test never checked
+  `r` itself. Fixed by adding a direct `expect(10 * result.typical).toBe(1)`, re-verified
+  (typecheck clean, same 16/16 tests passing), rather than dismissing the distinction as pedantic.
+
+Repo changes: `server/src/gate.ts`, `server/test/unit/gate.test.ts` (new);
+`server/package.json` and `package-lock.json` (`@stdlib/stats-base-dists-negative-binomial-cdf`
+added); this log entry. No `seed/` writes.
+
+**My call:** accepted — usualRange brute-forces through classify instead of recomputing the range,
+so the §4 off-by-one class can't recur in the implementation itself, not just in the test.
+
+**Who was right:** the witness — it caught that the floor test only implied r=1 through classify's
+formula rather than asserting it. I'd have missed that.
